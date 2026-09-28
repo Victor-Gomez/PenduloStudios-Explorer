@@ -28,6 +28,140 @@ public class RleMaskDecoderTests
         return ms.ToArray();
     }
 
+    /// <summary>A mask of <paramref name="runs"/> (id, length) pairs, in reading order.</summary>
+    private static byte[] MaskOf(params (byte Id, ushort Len)[] runs)
+    {
+        var data = new byte[runs.Length * 3];
+        for (int i = 0; i < runs.Length; i++)
+        {
+            data[i * 3] = runs[i].Id;
+            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(i * 3 + 1, 2), runs[i].Len);
+        }
+        return data;
+    }
+
+    /// <summary>A 1,536-byte attribute table, written page by page.</summary>
+    private static byte[] TableOf(params (int Page, byte Id, byte Value)[] cells)
+    {
+        var t = new byte[1536];
+        foreach ((int page, byte id, byte value) in cells)
+            t[page * 256 + id] = value;
+        return t;
+    }
+
+    [Fact]
+    public void AWholeScreenOfOneZoneIsStillAMask()
+    {
+        // RESOURCE.D07 and RESOURCE.E13 are exactly this: ten runs of a single id covering 1024x600.
+        // The scanline and two-zone tests both reject it, so it used to be read as a data entry.
+        byte[] data = MaskOf(Enumerable.Range(0, 10).Select(_ => ((byte)1, (ushort)61440)).ToArray());
+
+        Assert.Null(RleMaskDecoder.Detect(data));
+        MaskInfo? withScene = RleMaskDecoder.Detect(data, 1024, 600);
+        Assert.NotNull(withScene);
+        Assert.Equal((1024, 600, 10, 1), (withScene.Value.Width, withScene.Value.Height, withScene.Value.RunCount, withScene.Value.UniqueIdCount));
+    }
+
+    [Fact]
+    public void RunsMayWrapAcrossRowsWhenTheSceneSizeIsKnown()
+    {
+        // Runs that do not close on the row boundary: 21 of Runaway 1's masks are encoded this way.
+        byte[] data = MaskOf((1, 700), (2, 700), (1, 700), (2, 300));
+
+        Assert.Null(RleMaskDecoder.DetectWithWidth(data, 800, 3));
+        MaskInfo? info = RleMaskDecoder.Detect(data, 800, 3);
+        Assert.NotNull(info);
+        Assert.Equal((800, 3), (info.Value.Width, info.Value.Height));
+    }
+
+    [Fact]
+    public void ARunStreamThatDoesNotFillTheSceneIsNotItsMask()
+    {
+        Assert.Null(RleMaskDecoder.DetectByTotal(MaskOf((1, 100), (2, 100)), 800, 3));
+        Assert.Null(RleMaskDecoder.DetectByTotal(MaskOf((1, 2400), (2, 100)), 800, 3));
+        // A zero-length run is never legal, however the lengths add up.
+        Assert.Null(RleMaskDecoder.DetectByTotal(MaskOf((1, 2400), (2, 0)), 800, 3));
+    }
+
+    [Fact]
+    public void ALayerFilterShowsEveryZoneTheLayerClaims()
+    {
+        // Id 3 is a walk region, id 4 a hotspot, id 5 both -- the shape of an exit, which the actor has
+        // to be able to stand on and click. Each layer on its own must show both of its zones.
+        byte[] data = MaskOf((3, 400), (4, 400), (5, 400));
+        byte[] table = TableOf((0, 3, 1), (1, 4, 2), (0, 5, 1), (1, 5, 2));
+
+        int Painted(MaskLayers layers, int from, int to)
+        {
+            DecodedImage img = RleMaskDecoder.Decode(data, 1200, 1, null, table, layers);
+            int n = 0;
+            for (int x = from; x < to; x++)
+                if (img.Pixels[x * 4 + 3] != 0) n++;
+            return n;
+        }
+
+        Assert.Equal(400, Painted(MaskLayers.Walk, 0, 400));      // the walk-only zone
+        Assert.Equal(400, Painted(MaskLayers.Walk, 800, 1200));   // the exit, still walkable
+        Assert.Equal(0, Painted(MaskLayers.Walk, 400, 800));      // the hotspot-only zone stays hidden
+        Assert.Equal(400, Painted(MaskLayers.Hotspot, 400, 800));
+        Assert.Equal(400, Painted(MaskLayers.Hotspot, 800, 1200)); // the exit, still clickable
+    }
+
+    [Fact]
+    public void AZoneInTwoLayersKeepsBothColoursInACombinedView()
+    {
+        byte[] data = MaskOf((3, 400), (4, 400), (5, 400));
+        byte[] table = TableOf((0, 3, 1), (1, 4, 2), (0, 5, 1), (1, 5, 2));
+
+        DecodedImage img = RleMaskDecoder.Decode(data, 1200, 1, null, table, MaskLayers.All);
+        (byte B, byte G, byte R, byte A) walk = RleMaskDecoder.GenerateWalkboxPalette()[1];
+        (byte B, byte G, byte R, byte A) hot = RleMaskDecoder.GeneratePalette()[2];
+
+        int walkPx = 0, hotPx = 0;
+        for (int x = 800; x < 1200; x++)
+        {
+            int o = x * 4;
+            if (img.Pixels[o] == walk.B && img.Pixels[o + 1] == walk.G && img.Pixels[o + 2] == walk.R) walkPx++;
+            if (img.Pixels[o] == hot.B && img.Pixels[o + 1] == hot.G && img.Pixels[o + 2] == hot.R) hotPx++;
+        }
+
+        // Banded, so neither membership is lost to the other.
+        Assert.True(walkPx > 0, "the exit lost its walk colour");
+        Assert.True(hotPx > 0, "the exit lost its hotspot colour");
+        Assert.Equal(400, walkPx + hotPx);
+
+        // A zone in one layer is still painted flat.
+        Assert.Equal(400, Enumerable.Range(0, 400).Count(x =>
+            img.Pixels[x * 4] == walk.B && img.Pixels[x * 4 + 1] == walk.G && img.Pixels[x * 4 + 2] == walk.R));
+    }
+
+    [Fact]
+    public void TheDenseFieldPagesAreNotTreatedAsCompetingMemberships()
+    {
+        // Pages 3 and 5 are set on nearly every id in a real scene. Counting them as memberships would
+        // band the whole screen, so a zone they cover keeps a flat colour, and they never mask a
+        // sparse layer.
+        byte[] table = TableOf((0, 7, 1), (3, 7, 1), (5, 7, 2), (3, 8, 1), (5, 8, 2));
+
+        Assert.Empty(RleMaskDecoder.OverlappingIds(table));
+
+        byte[] data = MaskOf((7, 400), (8, 400));
+        DecodedImage img = RleMaskDecoder.Decode(data, 800, 1, null, table, MaskLayers.All);
+        (byte B, byte G, byte R, byte A) walk = RleMaskDecoder.GenerateWalkboxPalette()[1];
+        Assert.Equal(400, Enumerable.Range(0, 400).Count(x =>
+            img.Pixels[x * 4] == walk.B && img.Pixels[x * 4 + 1] == walk.G && img.Pixels[x * 4 + 2] == walk.R));
+    }
+
+    [Fact]
+    public void OverlappingIdsNamesTheLayersThatClaimAZone()
+    {
+        byte[] table = TableOf((0, 5, 1), (1, 5, 2), (1, 6, 3), (2, 6, 1), (0, 9, 4));
+
+        Assert.Equal(
+            [(5, MaskLayers.Walk | MaskLayers.Hotspot), (6, MaskLayers.Hotspot | MaskLayers.Depth)],
+            RleMaskDecoder.OverlappingIds(table));
+    }
+
     [Fact]
     public void DetectsValidSyntheticMask()
     {

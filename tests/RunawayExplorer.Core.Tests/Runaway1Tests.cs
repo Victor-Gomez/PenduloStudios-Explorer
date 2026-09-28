@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using RunawayExplorer.Core.FileSystem;
 using RunawayExplorer.Core.Formats;
 using Xunit;
@@ -342,5 +343,173 @@ public class Runaway1CharacterLibraryTests
             nb += b[i] * b[i];
         }
         return na == 0 || nb == 0 ? 0 : dot / Math.Sqrt(na * nb);
+    }
+}
+
+/// <summary>
+/// <em>Runaway 1</em>'s scene masks, against the shipped game. The encoding itself is the family default
+/// and is tested synthetically in <see cref="RleMaskDecoderTests"/>; what is checked here is that every
+/// scene in the game is recognised at the geometry its own background declares, including the two the
+/// scanline and two-zone tests used to reject.
+/// </summary>
+public class Runaway1SceneMaskTests
+{
+    private const string R1SteamDir = @"F:\Games\Steam\steamapps\common\Runaway A Road Adventure";
+
+    private static string ResourceDir => Path.Combine(R1SteamDir, "Resource");
+
+    private sealed record Scene(string Name, byte[] Mask, byte[] Table, int Width, int Height);
+
+    /// <summary>
+    /// Every scene archive that holds a mask at entry 1 and its attribute table at entry 2, with the
+    /// scene size taken from the background at entry 0 (an RGB565 raster, 600 rows in this game).
+    /// </summary>
+    private static List<Scene> ReadScenes()
+    {
+        var scenes = new List<Scene>();
+        foreach (string path in Directory.GetFiles(ResourceDir).OrderBy(x => x))
+        {
+            byte[] d;
+            try { d = File.ReadAllBytes(path); } catch { continue; }
+            if (d.Length < 16)
+                continue;
+
+            int tableBytes = (int)BinaryPrimitives.ReadUInt32LittleEndian(d);
+            if (tableBytes <= 0 || tableBytes % 8 != 0 || tableBytes > d.Length)
+                continue;
+            int half = tableBytes / 2;
+            if (half / 4 < 3)
+                continue;
+
+            int Off(int i) => (int)BinaryPrimitives.ReadUInt32LittleEndian(d.AsSpan(i * 4, 4));
+            int Siz(int i) => (int)BinaryPrimitives.ReadUInt32LittleEndian(d.AsSpan(half + i * 4, 4));
+            if (Off(1) + Siz(1) > d.Length || Siz(1) < 6 || Siz(2) != 1536 || Off(2) + 1536 > d.Length)
+                continue;
+
+            int bgPx = Siz(0) / 2;
+            if (bgPx % 600 != 0)
+                continue;
+
+            byte[] mask = d[Off(1)..(Off(1) + Siz(1))];
+            if (mask.Length % 3 != 0)
+                continue;
+
+            long total = 0;
+            bool zeroRun = false;
+            for (int q = 0; q + 3 <= mask.Length; q += 3)
+            {
+                ushort len = BinaryPrimitives.ReadUInt16LittleEndian(mask.AsSpan(q + 1, 2));
+                if (len == 0) zeroRun = true;
+                total += len;
+            }
+            // RESOURCE.F27 is the one entry 1 that is neither: 716,800 px against a 1024x600
+            // background, unexplained -- see docs/formats/masks.md.
+            if (zeroRun || total != bgPx)
+                continue;
+
+            scenes.Add(new Scene(Path.GetFileName(path), mask, d[Off(2)..(Off(2) + 1536)], bgPx / 600, 600));
+        }
+        return scenes;
+    }
+
+    [Fact]
+    public void RealInstall_EverySceneMaskIsRecognisedAtItsOwnBackgroundsGeometry()
+    {
+        if (!Directory.Exists(ResourceDir))
+            return;
+
+        List<Scene> scenes = ReadScenes();
+        Assert.Equal(58, scenes.Count);
+
+        var wrong = new List<string>();
+        foreach (Scene s in scenes)
+        {
+            MaskInfo? got = RleMaskDecoder.Detect(s.Mask, s.Width, s.Height);
+            if (got is null)
+                wrong.Add($"{s.Name}: not recognised ({s.Width}x{s.Height})");
+            else if (got.Value.Width != s.Width || got.Value.Height != s.Height)
+                wrong.Add($"{s.Name}: {got.Value.Width}x{got.Value.Height}, want {s.Width}x{s.Height}");
+        }
+        Assert.Empty(wrong);
+    }
+
+    [Fact]
+    public void RealInstall_TheTwoSingleZoneScenesAreMasksAndNotDataEntries()
+    {
+        if (!Directory.Exists(ResourceDir))
+            return;
+
+        foreach (string name in new[] { "RESOURCE.D07", "RESOURCE.E13" })
+        {
+            Scene s = ReadScenes().Single(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            MaskInfo info = Assert.NotNull(RleMaskDecoder.Detect(s.Mask, s.Width, s.Height));
+            Assert.Equal((1024, 600, 10, 1), (info.Width, info.Height, info.RunCount, info.UniqueIdCount));
+
+            // And the classifier, which is what puts it in the tree, agrees.
+            EntryClassification c = EntryClassifier.Classify(s.Mask, s.Width, s.Height);
+            Assert.Equal(EntryKind.Mask, c.Kind);
+        }
+    }
+
+    [Fact]
+    public void RealInstall_TheDivasBusIsATextbookMask()
+    {
+        if (!Directory.Exists(ResourceDir))
+            return;
+
+        Scene e06 = ReadScenes().Single(x => x.Name.Equals("RESOURCE.E06", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal((1380, 600), (e06.Width, e06.Height));
+
+        MaskInfo info = Assert.NotNull(RleMaskDecoder.Detect(e06.Mask, e06.Width, e06.Height));
+        Assert.Equal((4898, 16), (info.RunCount, info.UniqueIdCount));
+
+        // Scanline-bounded in the strong sense: every row closes on 1380 and no run crosses a boundary.
+        int row = 0, rows = 0;
+        for (int q = 0; q + 3 <= e06.Mask.Length; q += 3)
+        {
+            row += BinaryPrimitives.ReadUInt16LittleEndian(e06.Mask.AsSpan(q + 1, 2));
+            Assert.True(row <= 1380, "a run crossed a row boundary");
+            if (row == 1380) { row = 0; rows++; }
+        }
+        Assert.Equal((0, 600), (row, rows));
+
+        // The exit is the one zone in two layers: walk region 1 and hotspot 1 over the same pixels.
+        Assert.Equal([(16, MaskLayers.Walk | MaskLayers.Hotspot)], RleMaskDecoder.OverlappingIds(e06.Table));
+
+        // Page 2 is blank although the bus fills the middle of the painting: the walkable track never
+        // passes behind it, so there is nothing to sort. That is not a broken table.
+        Assert.False(RleMaskDecoder.DetectAttributePresence(e06.Table).HasDepth);
+    }
+
+    [Fact]
+    public void RealInstall_TheExitKeepsBothItsLayersInACombinedView()
+    {
+        if (!Directory.Exists(ResourceDir))
+            return;
+
+        Scene e06 = ReadScenes().Single(x => x.Name.Equals("RESOURCE.E06", StringComparison.OrdinalIgnoreCase));
+        byte[]? idMap = RleMaskDecoder.ExtractObjectMapping(e06.Table);
+        (byte B, byte G, byte R, byte A) walk1 = RleMaskDecoder.GenerateWalkboxPalette()[1];
+
+        // Id 16 is an 86 px patch at (1330,577)-(1379,587), inside the right-edge exit strip.
+        int WalkColoured(MaskLayers layers)
+        {
+            DecodedImage img = RleMaskDecoder.Decode(e06.Mask, e06.Width, e06.Height, idMap, e06.Table, layers);
+            int n = 0;
+            for (int y = 577; y <= 587; y++)
+                for (int x = 1330; x <= 1379; x++)
+                {
+                    int o = (y * e06.Width + x) * 4;
+                    if (img.Pixels[o + 3] != 0 && img.Pixels[o] == walk1.B &&
+                        img.Pixels[o + 1] == walk1.G && img.Pixels[o + 2] == walk1.R)
+                        n++;
+                }
+            return n;
+        }
+
+        Assert.Equal(86, WalkColoured(MaskLayers.Walk));
+        // With every layer on it is banded between its two, so neither reading of the zone is lost.
+        int combined = WalkColoured(MaskLayers.All);
+        Assert.InRange(combined, 1, 85);
     }
 }

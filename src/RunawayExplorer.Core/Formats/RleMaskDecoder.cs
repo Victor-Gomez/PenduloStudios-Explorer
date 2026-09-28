@@ -53,6 +53,48 @@ public static class RleMaskDecoder
 
     private const int PageMaterial = 5;
 
+    /// <summary>
+    /// The sparse pages -- walk region, hotspot and depth plane -- classify zones, so a zone can be in
+    /// several of them at once and every one of them matters. Pages 3 and 5 are dense *fields*: the
+    /// brightness class is set on 91% of a scene's ids and the footstep surface on 98%, covering ground
+    /// that every other layer also covers. Treating those as competing memberships would hatch the whole
+    /// screen, so they stay what they were -- the colour a zone falls back to when no sparse layer
+    /// claims it.
+    /// </summary>
+    private const int MaxHatch = 3;
+
+    /// <summary>Width in pixels of one diagonal band when an id belongs to several active layers.</summary>
+    private const int HatchBandPx = 6;
+
+    /// <summary>
+    /// The ids the attribute table classifies into more than one of the sparse layers, with the layers
+    /// that claim each. Those layers do <b>not</b> partition the ids: an exit is the one place the actor
+    /// must both stand and click, so it is a walk region and a hotspot at once -- in
+    /// <c>Resource.e06</c> id 16 is walk region 1 and hotspot 1 over the same 86 px. Callers that treat
+    /// a zone as belonging to a single layer get exits wrong; see <c>docs/formats/masks.md</c>.
+    /// <para>
+    /// The dense pages are deliberately not counted here -- see <see cref="MaxHatch"/>.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<(int Id, MaskLayers Layers)> OverlappingIds(ReadOnlySpan<byte> table1536)
+    {
+        var result = new List<(int, MaskLayers)>();
+        if (table1536.Length < 1536)
+            return result;
+
+        for (int id = 1; id < 256; id++)
+        {
+            MaskLayers inLayers = MaskLayers.None;
+            if (table1536[PageWalk * 256 + id] != 0) inLayers |= MaskLayers.Walk;
+            if (table1536[PageHotspot * 256 + id] != 0) inLayers |= MaskLayers.Hotspot;
+            if (table1536[PageDepth * 256 + id] != 0) inLayers |= MaskLayers.Depth;
+
+            if (int.PopCount((int)inLayers) > 1)
+                result.Add((id, inLayers));
+        }
+        return result;
+    }
+
     private static readonly int[] CandidateWidths =
     [
         1024, 1224, 1236, 1280, 1372, 1380, 1444, 1468, 1508, 1560, 1564, 1584, 1600, 1612, 1624, 1648, 1650, 1688, 1740, 1784, 1824, 1828, 1852, 1920, 1924, 1988, 2048, 2592, 2616, 2740, 3288
@@ -72,6 +114,15 @@ public static class RleMaskDecoder
                 return m4;
             if (data.Length % 3 == 0 && DetectWithWidth(data, sceneWidth.Value, 3) is { } matchW)
                 return matchW;
+
+            // The rule that holds for every mask in the game, once the scene's own size is known:
+            // the runs sum to exactly its pixel count, with no zero-length run. The two tests above
+            // additionally demand scanline bounding and at least two zones, so they miss a mask that
+            // wraps across rows or paints the whole screen as one zone. RESOURCE.D07 and RESOURCE.E13
+            // are the latter -- ten runs of one id totalling 1024x600 -- and were read as data.
+            if (sceneHeight.HasValue && sceneHeight.Value > 0 &&
+                DetectByTotal(data, sceneWidth.Value, sceneHeight.Value) is { } byTotal)
+                return byTotal;
         }
 
         if (data.Length % 4 == 0)
@@ -96,6 +147,58 @@ public static class RleMaskDecoder
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Tests the stream against a scene size that is already known: every run length positive, and the
+    /// lengths summing to exactly <paramref name="width"/> * <paramref name="height"/>. Runs may wrap
+    /// across rows and a single zone may cover the screen, both of which are legal and neither of which
+    /// the scanline test admits -- see <c>docs/formats/masks.md</c>.
+    /// </summary>
+    public static MaskInfo? DetectByTotal(ReadOnlySpan<byte> data, int width, int height, int runBytes = 3)
+    {
+        if (width <= 0 || height <= 0 || runBytes is not (3 or 4))
+            return null;
+        if (data.Length < runBytes * 2 || data.Length % runBytes != 0)
+            return null;
+
+        long target = (long)width * height;
+        long total = 0;
+        int runCount = 0, uniqueIds = 0;
+        Span<bool> seenIds = stackalloc bool[256];
+        HashSet<int>? extraIds = null;
+
+        for (int p = 0; p + runBytes <= data.Length; p += runBytes)
+        {
+            int id = runBytes == 4
+                ? BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p, 2))
+                : data[p];
+            ushort len = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + (runBytes - 2), 2));
+            if (len == 0)
+                return null;
+
+            total += len;
+            if (total > target)
+                return null;
+
+            runCount++;
+            if (id < 256)
+            {
+                if (!seenIds[id])
+                {
+                    seenIds[id] = true;
+                    uniqueIds++;
+                }
+            }
+            else
+            {
+                extraIds ??= [];
+                if (extraIds.Add(id))
+                    uniqueIds++;
+            }
+        }
+
+        return total == target ? new MaskInfo(width, height, runCount, uniqueIds, runBytes) : null;
     }
 
     /// <summary>
@@ -333,11 +436,16 @@ public static class RleMaskDecoder
         bool showLight = layers.HasFlag(MaskLayers.Light);
         bool showMat = layers.HasFlag(MaskLayers.Material);
 
-        // Precompute a 256-entry lookup table for the active layer configuration
-        var lut = new (byte B, byte G, byte R, byte A)[256];
+        // Precompute the active layer configuration for each id. An id can belong to several layers at
+        // once -- in Resource.e06 the exit patch (id 16) is walk region 1 *and* hotspot 1, because the
+        // actor has to be able to both stand on the exit and click it -- so this keeps every membership
+        // rather than the highest-priority one, and the run loop below shows them all.
+        var lut = new (byte B, byte G, byte R, byte A)[256 * MaxHatch];
+        var hatchCount = new byte[256];
         lut[0] = (hasTable || layers != MaskLayers.All || !showWalk || transparentBackground)
             ? ((byte)0, (byte)0, (byte)0, (byte)0)
             : defaultPalette[0];
+        hatchCount[0] = 1;
 
         for (int id = 1; id < 256; id++)
         {
@@ -346,11 +454,8 @@ public static class RleMaskDecoder
                 if (showWalk)
                 {
                     byte displayId = idMap is not null ? idMap[id] : (byte)id;
-                    lut[id] = defaultPalette[displayId];
-                }
-                else
-                {
-                    lut[id] = ((byte)0, (byte)0, (byte)0, (byte)0);
+                    lut[id * MaxHatch] = defaultPalette[displayId];
+                    hatchCount[id] = 1;
                 }
                 continue;
             }
@@ -369,45 +474,40 @@ public static class RleMaskDecoder
 
             if (!matchWalk && !matchHot && !matchDepth && !matchLight && !matchMat)
             {
+                // An id the table says nothing at all about still belongs to the scene, so it keeps its
+                // own colour while every layer is showing. An id that *is* classified, just not into a
+                // layer being shown, stays hidden.
                 if (walk == 0 && hot == 0 && depth == 0 && light == 0 && mat == 0 &&
                     showWalk && showHotspot && showDepth && showLight && showMat)
                 {
                     byte displayId = idMap is not null ? idMap[id] : (byte)id;
-                    lut[id] = defaultPalette[displayId];
-                }
-                else
-                {
-                    lut[id] = ((byte)0, (byte)0, (byte)0, (byte)0);
+                    lut[id * MaxHatch] = defaultPalette[displayId];
+                    hatchCount[id] = 1;
                 }
                 continue;
             }
 
-            // Layer-specific styling
+            // Every sparse layer this id belongs to, most specific first. The order decides which colour
+            // a zone in one layer gets -- unchanged from when this was one colour per id -- and which
+            // colour leads the bands for a zone in several.
+            int at = id * MaxHatch;
+            byte found = 0;
             if (matchHot)
+                lut[at + found++] = defaultPalette[hot];
+            if (matchWalk)
+                lut[at + found++] = walkPalette[walk % walkPalette.Length];
+            if (matchDepth)
+                lut[at + found++] = depthPalette[Math.Clamp((int)depth, 0, depthPalette.Length - 1)];
+
+            // The dense field pages coloured this zone only when no sparse layer claimed it, and still do.
+            if (found == 0)
             {
-                lut[id] = defaultPalette[hot];
+                if (matchMat)
+                    lut[at + found++] = matPalette[Math.Clamp((int)mat, 0, matPalette.Length - 1)];
+                else if (matchLight)
+                    lut[at + found++] = lightPalette[Math.Clamp((int)light, 0, lightPalette.Length - 1)];
             }
-            else if (matchWalk)
-            {
-                lut[id] = walkPalette[walk % walkPalette.Length];
-            }
-            else if (matchDepth)
-            {
-                lut[id] = depthPalette[Math.Clamp((int)depth, 0, depthPalette.Length - 1)];
-            }
-            else if (matchMat)
-            {
-                lut[id] = matPalette[Math.Clamp((int)mat, 0, matPalette.Length - 1)];
-            }
-            else if (matchLight)
-            {
-                lut[id] = lightPalette[Math.Clamp((int)light, 0, lightPalette.Length - 1)];
-            }
-            else
-            {
-                byte displayId = idMap is not null ? idMap[id] : (byte)id;
-                lut[id] = defaultPalette[displayId];
-            }
+            hatchCount[id] = found;
         }
 
         int runBytes = (data.Length % 4 == 0 && (data.Length % 3 != 0 || width >= 1920)) ? 4 : 3;
@@ -424,13 +524,36 @@ public static class RleMaskDecoder
             pos += runBytes;
 
             int count = Math.Min((int)len, totalPx - pxIndex);
-            (byte b, byte g, byte r, byte a) = lut[id % 256];
+            int at = (id % 256) * MaxHatch;
+            int n = hatchCount[id % 256];
 
-            if (a > 0)
+            if (n == 1)
             {
+                (byte b, byte g, byte r, byte a) = lut[at];
+                if (a > 0)
+                {
+                    for (int i = 0; i < count; i++)
+                    {
+                        int dst = (pxIndex + i) * 4;
+                        pixels[dst + 0] = b;
+                        pixels[dst + 1] = g;
+                        pixels[dst + 2] = r;
+                        pixels[dst + 3] = a;
+                    }
+                }
+            }
+            else if (n > 1)
+            {
+                // Diagonal bands, so a zone in two layers reads as belonging to both instead of
+                // vanishing into whichever one the priority order happens to pick first.
                 for (int i = 0; i < count; i++)
                 {
-                    int dst = (pxIndex + i) * 4;
+                    int idx = pxIndex + i;
+                    int band = ((idx % width + idx / width) / HatchBandPx) % n;
+                    (byte b, byte g, byte r, byte a) = lut[at + band];
+                    if (a == 0)
+                        continue;
+                    int dst = idx * 4;
                     pixels[dst + 0] = b;
                     pixels[dst + 1] = g;
                     pixels[dst + 2] = r;

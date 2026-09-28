@@ -26,13 +26,22 @@ N × {
 #### Scanline bounding rule, and where it does not hold
 
 Runs are often **scanline-bounded**: the sum of run lengths in any row equals the scene width
-(e.g. 1024 or 1280) with zero remainder, and no run wraps across a scanline.
+(e.g. 1024, 1280 or 1380) with zero remainder, and no run wraps across a scanline.
 
-*Runaway 1* mixes both encodings, freely, within the same game. Of its 56 scene masks, **34 are
-scanline-bounded and 21 are continuous** -- their runs wrap onto the next row and only the grand
+*Runaway 1* mixes both encodings, freely, within the same game. Of its 58 scene masks, **36 are
+scanline-bounded and 22 are continuous** -- their runs wrap onto the next row and only the grand
 total is meaningful. (One more, `RESOURCE.F27` entry 1, is neither: its runs total 716,800 px
 against a 1024x600 background, and it has not been explained.) So the scanline rule cannot be
 used to *recognise* a *Runaway 1* mask; it misses more than a third of them.
+
+#### A mask may paint the whole screen as one zone
+
+`RESOURCE.D07` and `RESOURCE.E13` are ten runs of a single id totalling exactly 1024x600. They are
+legal masks -- a scene the actor cannot walk in and nothing in it to click -- but they satisfy
+neither the scanline rule nor a "at least two zones" sanity check, so a decoder that applies either
+as a *recognition* test reads them as anonymous data and the scene loses its mask entirely. Both
+were read that way here until the total-pixel rule below replaced the guard. A zone count is a
+property of a mask, never a test for one.
 
 Two practical consequences:
 
@@ -142,6 +151,15 @@ table, counting only the ids a scene's mask actually paints:
 | 4 | **Not a page. Never read it.** | The entry is 1,536 bytes for six pages but only five are written; this slot keeps whatever was in the exporter's buffer -- see the note below the table. |
 | 5 | **Footstep surface material**, 0..7 | Dense (98% of ids) and constant across the whole scene in 40 of 56 scenes, which is what one floor material looks like. Where a scene has two, the boundary is the material's edge in the painting and not an object: in F18 the dirt street is 2 and the wooden boardwalk is 3, and the border traces the front edge of the planks. The per-scene sets group by location -- the desert scenes E02, E05, E07 and E08 all use 2 alone. In *Hollywood Monsters* the same page indexes the scene's resident sound effects, played on the walk cycle's two footfall cels. |
 
+#### Sparse pages classify, dense pages fill
+
+Pages 0, 1 and 2 are sparse: they name what a zone *is*, and a zone can be in several of them at
+once, which is what the exit above shows. Pages 3 and 5 are dense fields -- brightness is set on
+91% of a scene's ids and footstep surface on 98% -- so they cover ground every other page covers
+too. Treating those as memberships of the same kind would make almost every zone in the game a
+multi-layer one, which is why `RleMaskDecoder` bands only the sparse three and lets the dense pages
+colour a zone when nothing sparse claims it.
+
 #### These pages do not rank with screen row
 
 Rank correlation is the wrong tool for finding the depth page, and it is what kept page 2
@@ -177,6 +195,91 @@ the game are the mirrored chapter pairs `F13`/`h13`, `F18`/`h18`, `F26`/`H26`), 
 it was written once at export time. The *Hollywood Monsters* page at the same offset is the
 palette recolouring class, which a 16-bit-colour game has no use for, so the slot kept the
 layout and was never filled in.
+
+#### Where the apparent "period of four" came from
+
+`Resource.e06`'s page 4 is the clearest case. Over the ids that scene paints it reads
+
+```text
+id   1    2    3    4    5    6    7    8
+   249  113    3   68  249  113    3   74
+```
+
+which looks like a period of four until id 8 breaks it. Read as little-endian words the
+sequence is not periodic at all -- it is two adjacent pointers that happen to share their top
+three bytes:
+
+```text
+0x0371F900  0x0371F944  0x0040544A  0x00000000  0x033C20C0  0x0371F94C
+```
+
+Two stack addresses a few dozen bytes apart, an image address, a heap address. Any page-4 run
+of near-identical dwords looks periodic when it is sliced back into bytes, which is why reading
+the block per id ever suggested a structure.
+
+#### Worked example: `Resource.e06\e01`
+
+The scene is the Divas' bus in the desert, 1380x600. Its entry 1 is a textbook mask and its
+entries 2 and 3 corroborate each other, so it is a good one to check a decoder against.
+
+| | |
+|---|---|
+| Entry 1, the mask | 14,694 bytes = 4,898 runs exactly, totalling 828,000 px = 1380 x 600. Scanline-bounded in the strong sense: all 600 rows close on exactly 1380 and **no** run crosses a row boundary. 16 ids. |
+| Entry 2, the attributes | ids 1-12 are not walkable, 13-16 are; ids 3-12 and 16 carry hotspots 1-9. |
+| Entry 3, the routes | 43,659 bytes, three live regions. |
+
+Three things this scene shows that the pooled figures above do not:
+
+- **A walk region can be a corridor, not a floor.** Page 0 sets only ids 13-16, together
+  10,882 px -- **1.31%** of the screen. They form a narrow diagonal track running from the
+  folding chair at `x 349` down to the right-hand screen edge, while the wide open sand either
+  side of it is id 1 and not walkable. "Tinting page 0 lights the ground the player can reach"
+  is right, but the ground a player can reach is sometimes a path a hundred pixels wide.
+- **Page 2 marks nothing, even with an obvious occluder on screen.** The bus fills the middle
+  of the painting and page 2 is zero for every id the scene uses. The depth page is not a
+  catalogue of foreground objects; it is written only where the walkable region actually passes
+  behind one, and this track never does. Page 3 is likewise a flat 1 everywhere -- no lighting
+  variation. A scene with a blank page 2 is not a broken table.
+- **One id can be both a walk region and a hotspot.** Id 16, a 86 px patch at
+  `(1330,577)-(1379,587)`, is walk region 1 *and* hotspot 1, sitting inside the 50 px-wide
+  right-edge exit strip (id 3, also hotspot 1). The exit is the place the actor has to be able
+  to stand on *and* click, so the two layers overlap there. Decoders that assume the layers
+  partition the ids will mis-handle exits.
+
+  This is not an oddity of this scene. Across the 64 *Runaway 1* tables, **54 scenes carry 948
+  ids that are in two or three of the sparse layers** at once: 328 hotspot+depth (a clickable
+  object that the actor also walks behind), 244 walk+depth, 208 walk+hotspot and 168 in all
+  three. `RleMaskDecoder` used to give each id one colour by a fixed layer priority, so in any
+  combined view every membership but the first was invisible -- the exit in this scene rendered
+  purely as a hotspot, and the walkable track appeared to stop short of the way out. It now
+  bands such a zone between its layers, so each one stays readable; `OverlappingIds` returns the
+  set. Zones in a single layer are still painted flat, and a single-layer view is unchanged.
+
+The route table cross-checks the mask exactly. Page 0 numbers the track `3, 2, 1` left to
+right (ids 13, 14, 15, with 16 continuing region 1 into the exit), and entry 3 chains them:
+
+```text
+1 -> 2  hops [2]     crossing (777, 483)
+2 -> 1  hops [1]     crossing (778, 484)
+2 -> 3  hops [3]     crossing (607, 469)
+3 -> 2  hops [2]     crossing (608, 470)
+1 -> 3  hops [2, 3]  no crossings
+3 -> 1  hops [2, 1]  no crossings
+```
+
+The id boundaries in the mask fall at `x 607|608` and `x 777|778`, so each crossing point sits
+one pixel inside the destination region, and the two-hop pairs carry no points of their own -- both
+exactly as the format expects. Unused point slots are padded with `(-1, -1)`, not zeroes.
+
+#### Decoders & tests
+
+`RleMaskDecoder.Detect` tries the scanline rule first, because it is the strongest test available
+when nothing else is known about the entry, and falls back to `DetectByTotal` once the scene's own
+size is in hand: run lengths all positive and summing to exactly that many pixels. That fallback is
+what recognises the continuous masks and the two single-zone ones. Decoding is continuous in every
+case -- a scanline-bounded mask lands on its row boundaries of its own accord. Synthetic tests are
+in `RleMaskDecoderTests`, and `Runaway1SceneMaskTests` re-checks all 58 masks, the two single-zone
+scenes and this worked example against the shipped game.
 
 The earlier `DepthPlane` / `MaterialId` / `ScriptAction` labels came from the record-major
 reading. Page 2 turns out to carry what `DepthPlane` claimed and page 5 roughly what
