@@ -23,6 +23,7 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
         [EntryKind.Overlay] = "ImageTypeIcon",
         [EntryKind.Animation] = "AnimationTypeIcon",
         [EntryKind.CharacterAnimation] = "AnimationTypeIcon",
+        [EntryKind.ActorAnimation] = "AnimationTypeIcon",
         [EntryKind.Data] = "DataTypeIcon",
         [EntryKind.Music] = "SoundTypeIcon",
         [EntryKind.Ambient] = "SoundTypeIcon",
@@ -34,6 +35,8 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
         [EntryKind.GlobalData] = "DataTypeIcon",
         [EntryKind.Font] = "ImageTypeIcon",
         [EntryKind.RawFile] = "RawFileTypeIcon",
+        [EntryKind.Savegame] = "ImageTypeIcon",
+        [EntryKind.SceneTable] = "DataTypeIcon",
     };
 
     private const string RootVectorIcon = "HouseIcon";

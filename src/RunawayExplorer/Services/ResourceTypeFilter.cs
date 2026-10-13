@@ -18,8 +18,9 @@ public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string
         new("Backgrounds", [EntryKind.Background], "ImageTypeIcon"),
         new("Scene masks", [EntryKind.Mask], "ImageTypeIcon"),
         new("Overlays", [EntryKind.Overlay], "ImageTypeIcon"),
-        new("Animations", [EntryKind.Animation, EntryKind.CharacterAnimation], "AnimationTypeIcon"),
-        new("All images", [EntryKind.Background, EntryKind.Mask, EntryKind.Overlay, EntryKind.Animation, EntryKind.CharacterAnimation], "ImageTypeIcon"),
+        new("Animations", [EntryKind.Animation, EntryKind.CharacterAnimation, EntryKind.ActorAnimation], "AnimationTypeIcon"),
+        new("All images", [EntryKind.Background, EntryKind.Mask, EntryKind.Overlay, EntryKind.Animation, EntryKind.CharacterAnimation, EntryKind.ActorAnimation, EntryKind.Savegame], "ImageTypeIcon"),
+        new("Saved games", [EntryKind.Savegame], "ImageTypeIcon"),
         new("Fonts", [EntryKind.Font], "ImageTypeIcon"),
         new("Music", [EntryKind.Music], "SoundTypeIcon"),
         new("Ambient & SFX", [EntryKind.Ambient], "SoundTypeIcon"),
@@ -28,7 +29,7 @@ public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string
         new("Video", [EntryKind.Video], "VideoTypeIcon"),
         new("Lip-sync", [EntryKind.Viseme], "DataTypeIcon"),
         new("Dialogue", [EntryKind.Dialogue], "DataTypeIcon"),
-        new("Data (undecoded)", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile], "RawFileTypeIcon"),
+        new("Data", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile, EntryKind.SceneTable], "RawFileTypeIcon"),
     ];
 
     public static IReadOnlyList<ResourceTypeFilter> GetCategories(string? language = null)
@@ -43,8 +44,9 @@ public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string
             new("Fondos", [EntryKind.Background], "ImageTypeIcon"),
             new("Máscaras de escena", [EntryKind.Mask], "ImageTypeIcon"),
             new("Capas", [EntryKind.Overlay], "ImageTypeIcon"),
-            new("Animaciones", [EntryKind.Animation, EntryKind.CharacterAnimation], "AnimationTypeIcon"),
-            new("Todas las imágenes", [EntryKind.Background, EntryKind.Mask, EntryKind.Overlay, EntryKind.Animation, EntryKind.CharacterAnimation], "ImageTypeIcon"),
+            new("Animaciones", [EntryKind.Animation, EntryKind.CharacterAnimation, EntryKind.ActorAnimation], "AnimationTypeIcon"),
+            new("Todas las imágenes", [EntryKind.Background, EntryKind.Mask, EntryKind.Overlay, EntryKind.Animation, EntryKind.CharacterAnimation, EntryKind.ActorAnimation, EntryKind.Savegame], "ImageTypeIcon"),
+            new("Partidas guardadas", [EntryKind.Savegame], "ImageTypeIcon"),
             new("Fuentes", [EntryKind.Font], "ImageTypeIcon"),
             new("Música", [EntryKind.Music], "SoundTypeIcon"),
             new("Sonido ambiente y efectos", [EntryKind.Ambient], "SoundTypeIcon"),
@@ -53,7 +55,7 @@ public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string
             new("Vídeos", [EntryKind.Video], "VideoTypeIcon"),
             new("Sincronización labial", [EntryKind.Viseme], "DataTypeIcon"),
             new("Diálogos", [EntryKind.Dialogue], "DataTypeIcon"),
-            new("Datos (sin decodificar)", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile], "RawFileTypeIcon"),
+            new("Datos", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile, EntryKind.SceneTable], "RawFileTypeIcon"),
         ];
     }
 

@@ -26,7 +26,7 @@ public sealed record TextResource(string Text) : ResourceContent;
 public sealed record SoundResource(string TempFilePath, AudioInfo Pcm, double DurationSeconds) : ResourceContent;
 
 /// <summary>A Bink video with its header restored, written to a temp <c>.bik</c> LibVLC can play directly.</summary>
-public sealed record VideoResource(string TempFilePath) : ResourceContent;
+public sealed record VideoResource(string TempFilePath, string? Subtitles = null) : ResourceContent;
 
 /// <summary>
 /// A scene archive selected as a whole: its background plus a summary of what it holds. The status

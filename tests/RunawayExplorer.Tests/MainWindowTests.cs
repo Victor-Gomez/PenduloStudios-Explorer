@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using RunawayExplorer.Views;
 using Xunit;
@@ -38,6 +39,11 @@ public class MainWindowTests : UiTestBase
         Assert.NotNull(window.FindControl<Button>("VideoMuteButton"));
         Assert.NotNull(window.FindControl<Image>("WaveformImage"));
         Assert.NotNull(window.FindControl<TextBlock>("SelectedPathText"));
+        Assert.NotNull(window.FindControl<ToggleButton>("AnimOnionToggle"));
+        Assert.NotNull(window.FindControl<ComboBox>("AnimSpeedCombo"));
+        Assert.NotNull(window.FindControl<Button>("AnimExportFrameButton"));
+        Assert.NotNull(window.FindControl<Border>("DialogueToolbar"));
+        Assert.NotNull(window.FindControl<Button>("DialoguePlayAllButton"));
     }
 
     [AvaloniaFact]

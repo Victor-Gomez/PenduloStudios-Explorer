@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -50,6 +51,11 @@ public partial class MainWindow : Window
     private FsNode? _selectedNode;
     private bool _initializingGameSelector;
     private ResourceContent? _currentContent;
+
+    private WriteableBitmap? _animOnionCanvas;
+    private double _animSpeedMultiplier = 1.0;
+    private CancellationTokenSource? _dialoguePlayCts;
+    private bool _isPlayingDialogueSequence;
 
     // Incremented on every new selection; async loads compare their captured value against this and
     // drop stale results (the user clicked away while the load was in flight).
@@ -422,6 +428,7 @@ public partial class MainWindow : Window
         GameSelectorCombo.SelectedIndex = (int)_settings.ActiveGame;
         _initializingGameSelector = false;
 
+        RefreshGameSelectorItems();
         RefreshRecentInstallsMenu();
         await ReloadActiveGameAsync();
 
@@ -489,6 +496,69 @@ public partial class MainWindow : Window
         await ReloadActiveGameAsync();
     }
 
+    private void RefreshGameSelectorItems()
+    {
+        string[] gameNames =
+        [
+            "Runaway: A Road Adventure",
+            "Runaway: The Dream of the Turtle",
+            "Runaway: A Twist of Fate",
+            "The Next BIG Thing",
+            "Yesterday",
+            "Hollywood Monsters",
+        ];
+
+        _initializingGameSelector = true;
+        try
+        {
+            for (int i = 0; i < gameNames.Length && i < GameSelectorCombo.Items.Count; i++)
+            {
+                if (GameSelectorCombo.Items[i] is ComboBoxItem item)
+                {
+                    var version = (GameVersion)i;
+                    string dir = _settings.GetGameDir(version);
+                    bool configured = !string.IsNullOrEmpty(dir) && Directory.Exists(dir);
+                    item.Content = configured ? $"✓  {gameNames[i]}" : gameNames[i];
+                }
+            }
+        }
+        finally
+        {
+            _initializingGameSelector = false;
+        }
+    }
+
+    private async void AutoDetectGames_Click(object? sender, RoutedEventArgs e)
+    {
+        SetStatus("Auto-detecting installed games across drives...");
+        int found = await Task.Run(() => _settings.AutoDetectInstalledGames());
+        if (found > 0)
+        {
+            _settings.Save();
+            RefreshGameSelectorItems();
+            RefreshRecentInstallsMenu();
+            var detected = GameDetector.FindInstalledGames();
+            var sb = new StringBuilder();
+            sb.AppendLine($"Discovered {found} installed game(s):\n");
+            foreach ((GameVersion v, string p) in detected)
+            {
+                sb.AppendLine($"• {v.GetTitle()}: {p}");
+            }
+            await Dialogs.ShowMessageBox(this, sb.ToString().TrimEnd(), "Auto-Detection Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            string activeDir = _settings.GetGameDir(_settings.ActiveGame);
+            if (!string.IsNullOrEmpty(activeDir) && Directory.Exists(activeDir) && _vfs is null)
+            {
+                await ReloadActiveGameAsync();
+            }
+        }
+        else
+        {
+            await Dialogs.ShowMessageBox(this, "No new Pendulo Studios game installations were detected on default paths or drives.", "Auto-Detection", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        SetStatus(_vfs is not null ? $"Loaded \"{_vfs.BaseDir}\"." : "Ready.");
+    }
+
     private async Task OpenInstallAsync(string folder)
     {
         GameVersion detected = GameDetector.Detect(folder);
@@ -497,12 +567,14 @@ public partial class MainWindow : Window
         _settings.RegisterRecentInstall(folder);
         _settings.Save();
 
+        RefreshGameSelectorItems();
+        RefreshRecentInstallsMenu();
+
         _initializingGameSelector = true;
         GameSelectorCombo.SelectedIndex = (int)detected;
         _initializingGameSelector = false;
 
         await InitVfsAsync(folder);
-        RefreshRecentInstallsMenu();
     }
 
     private async Task InitVfsAsync(string baseDir)
@@ -614,6 +686,23 @@ public partial class MainWindow : Window
             Tree.Focus();
             e.Handled = true;
         }
+        else if (e.Key is Key.Down or Key.Enter)
+        {
+            Tree.Focus();
+            if (Tree.ItemsSource is IEnumerable<FsNodeViewModel> items && items.FirstOrDefault() is { } first)
+            {
+                if (first.Children.Count > 0)
+                {
+                    first.IsExpanded = true;
+                    Tree.SelectedItem = first.Children[0];
+                }
+                else
+                {
+                    Tree.SelectedItem = first;
+                }
+            }
+            e.Handled = true;
+        }
     }
 
     private async Task ApplyTreeFilterAsync()
@@ -641,16 +730,37 @@ public partial class MainWindow : Window
             typeFilter.Matches(node) &&
             (searchText.Length == 0 || MatchesSearch(node, searchText));
 
-        // A search hit on a folder name (the archive, "RESOURCE.H09") should show that folder's entries,
-        // so the name of every ancestor counts too.
+        // Multi-token search: every token must match the node, its subtitle, or one of its ancestors.
         static bool MatchesSearch(FsNode node, string text)
         {
-            for (FsNode? n = node; n is not null && n.Parent is not null; n = n.Parent)
+            string[] tokens = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (tokens.Length == 0) return true;
+
+            foreach (string token in tokens)
             {
-                if (n.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase))
-                    return true;
+                bool matchedToken = false;
+                if (node.DisplayName.Contains(token, StringComparison.OrdinalIgnoreCase) ||
+                    node.Name.Contains(token, StringComparison.OrdinalIgnoreCase) ||
+                    (node.Subtitle is not null && node.Subtitle.Contains(token, StringComparison.OrdinalIgnoreCase)))
+                {
+                    matchedToken = true;
+                }
+                else
+                {
+                    for (FsNode? n = node.Parent; n is not null && n.Parent is not null; n = n.Parent)
+                    {
+                        if (n.DisplayName.Contains(token, StringComparison.OrdinalIgnoreCase) ||
+                            n.Name.Contains(token, StringComparison.OrdinalIgnoreCase))
+                        {
+                            matchedToken = true;
+                            break;
+                        }
+                    }
+                }
+                if (!matchedToken)
+                    return false;
             }
-            return false;
+            return true;
         }
 
         FsNodeViewModel? filteredRoot = await Task.Run(() => FsNodeViewModel.BuildFiltered(vfs.Root, vfs, Matches));
@@ -851,6 +961,26 @@ public partial class MainWindow : Window
                 int written = await Task.Run(() => BatchExporter.ExportImageSequence(asset, targetDir));
                 RememberExportFolder(folder);
                 SetStatus($"Exported {written} frame(s) to {targetDir}");
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.ShowMessageBox(this, $"Export failed:\n{ex.Message}", "Runaway Explorer", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else if (format == AnimationExportFormat.SpriteSheet)
+        {
+            string title = "Save Sprite Sheet (PNG + JSON Atlas)";
+            string? path = await Dialogs.ShowSaveFileDialog(this, title, Path.ChangeExtension(defaultName, ".png"),
+                [new FilePickerFileType("PNG Sprite Sheet") { Patterns = ["*.png"] }], _settings.LastExportDir);
+            if (path is null)
+                return;
+
+            double fps = _settings.AnimationFps;
+            try
+            {
+                (int total, string pngPath, string jsonPath) = await Task.Run(() => BatchExporter.ExportSpriteSheet(asset, path, fps));
+                RememberExportFolder(path);
+                SetStatus($"Exported sprite sheet and atlas ({total} frames) to {path}");
             }
             catch (Exception ex)
             {
@@ -1639,6 +1769,18 @@ public partial class MainWindow : Window
         bool isSceneArchive = folder.Parent?.Name == VirtualFileSystem.ScenesFolder && folder.ArchivePath is not null;
         if (!isSceneArchive)
         {
+            bool hasDialogue = folder.Children.Any(c => c.Kind == EntryKind.Dialogue || c.Subtitle is not null);
+            if (hasDialogue)
+            {
+                string transcript = DialogueTranscriptWriter.WriteText(folder.Children, folder.DisplayName);
+                TextPanel.Text = transcript;
+                TextContainer.IsVisible = true;
+                TextPanel.IsVisible = true;
+                DialogueToolbar.IsVisible = true;
+                SetStatus($"{folder.GetPath()}  -  Dialogue transcript ({folder.Children.Count} entries)");
+                return;
+            }
+
             SetStatus($"{folder.GetPath()}  -  {CountFiles(folder)} entr{(CountFiles(folder) == 1 ? "y" : "ies")}");
             return;
         }
@@ -1726,20 +1868,26 @@ public partial class MainWindow : Window
     {
         ImagePanel.IsVisible = false;
         AnimationPanel.IsVisible = false;
+        TextContainer.IsVisible = false;
         TextPanel.IsVisible = false;
+        DialogueToolbar.IsVisible = false;
         SoundPanel.IsVisible = false;
         VideoPanel.IsVisible = false;
 
+        _dialoguePlayCts?.Cancel();
         StopVideo();
         StopAnimation();
         _animAsset = null;
         _animFrames = null;
         _animCanvas = null;
+        _animOnionCanvas = null;
         PreviewImage.Source = null;
         PreviewImage.IsVisible = true;
         PreviewImage.Opacity = 1.0;
         ImageBackground.Source = null;
         AnimFrameImage.Source = null;
+        AnimOnionImage.Source = null;
+        AnimOnionImage.IsVisible = false;
         AnimBackground.Source = null;
 
         SceneOverlayLayer.Children.Clear();
@@ -1774,7 +1922,9 @@ public partial class MainWindow : Window
 
             case TextResource text:
                 TextPanel.Text = text.Text;
+                TextContainer.IsVisible = true;
                 TextPanel.IsVisible = true;
+                DialogueToolbar.IsVisible = _selectedNode?.Kind == EntryKind.Dialogue || _selectedNode?.Subtitle is not null;
                 break;
 
             case SoundResource sound:
@@ -1787,7 +1937,9 @@ public partial class MainWindow : Window
 
             case ErrorResource error:
                 TextPanel.Text = error.Message;
+                TextContainer.IsVisible = true;
                 TextPanel.IsVisible = true;
+                DialogueToolbar.IsVisible = false;
                 break;
         }
     }
@@ -2241,7 +2393,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Finds every <see cref="EntryKind.Overlay"/> child in the scene archive, decodes it, places it on
+    /// Finds overlay, animated prop, and mask children in the scene archive, decodes them, places them on
     /// <c>SceneOverlayLayer</c>, and fills the sidebar checklist so the user can toggle each one.
     /// </summary>
     private void PopulateSceneOverlays(SceneResource scene)
@@ -2257,7 +2409,7 @@ public partial class MainWindow : Window
         VirtualFileSystem vfs = _vfs;
         foreach (FsNode child in scene.Archive.Children)
         {
-            if (child.Kind != EntryKind.Overlay)
+            if (child.Kind != EntryKind.Overlay && child.Kind != EntryKind.Animation && child.Kind != EntryKind.Mask)
                 continue;
 
             try
@@ -2266,8 +2418,31 @@ public partial class MainWindow : Window
                 DecodedImage? overlayImg = null;
                 int posX = 0, posY = 0;
                 string kind = "overlay";
+                bool isMask = child.Kind == EntryKind.Mask;
 
-                if (SpriteAsset.Parse(data) is { } sprite1)
+                if (child.Kind == EntryKind.Mask)
+                {
+                    int w = scene.Background.Width;
+                    int h = scene.Background.Height;
+                    overlayImg = RleMaskDecoder.TryDecode(data, idMap: null, w, h)?.Image;
+                    posX = 0;
+                    posY = 0;
+                    kind = "mask";
+                }
+                else if (child.Kind == EntryKind.Animation)
+                {
+                    int bpp = vfs.GameVersion == GameVersion.HollywoodMonsters ? 1 : 2;
+                    if (SpriteAsset.Parse(data, bpp) is { } anim)
+                    {
+                        anim.Palette = vfs.ScenePaletteFor(child);
+                        var f0 = anim.DecodeFrame(0);
+                        overlayImg = f0.Image;
+                        posX = f0.X;
+                        posY = f0.Y;
+                        kind = $"anim prop ({anim.FrameCount}f)";
+                    }
+                }
+                else if (SpriteAsset.Parse(data) is { } sprite1)
                 {
                     var frame = sprite1.DecodeFrame(0);
                     overlayImg = frame.Image;
@@ -2307,6 +2482,8 @@ public partial class MainWindow : Window
                 {
                     Source = bmp,
                     Stretch = Stretch.None,
+                    Opacity = isMask ? 0.55 : 1.0,
+                    IsVisible = !isMask,
                 };
                 RenderOptions.SetBitmapInterpolationMode(img, BitmapInterpolationMode.None);
                 Canvas.SetLeft(img, posX);
@@ -2320,6 +2497,7 @@ public partial class MainWindow : Window
                     Y = posY,
                     OverlayBitmap = bmp,
                     CanvasImage = img,
+                    IsChecked = !isMask,
                 };
                 items.Add(item);
             }
@@ -2427,6 +2605,13 @@ public partial class MainWindow : Window
             new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Unpremul);
         AnimFrameImage.Source = _animCanvas;
         AnimFrameImage.IsVisible = true;
+
+        _animOnionCanvas = new WriteableBitmap(
+            new PixelSize(Math.Max(1, anim.Asset.Bounds.Width), Math.Max(1, anim.Asset.Bounds.Height)),
+            new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Unpremul);
+        AnimOnionImage.Source = _animOnionCanvas;
+        AnimOnionImage.IsVisible = false;
+
         _animFrameIndex = 0;
 
         string mode = _settings.BackgroundMode.ToLowerInvariant();
@@ -2522,6 +2707,18 @@ public partial class MainWindow : Window
         SpriteFrame frame = _animFrames[index] ??= _animAsset.DecodeFrame(index);
         PaintAnimationFrame(frame);
 
+        if (AnimOnionToggle.IsChecked == true && index > 0 && _animOnionCanvas is not null)
+        {
+            SpriteFrame prevFrame = _animFrames[index - 1] ??= _animAsset.DecodeFrame(index - 1);
+            PaintFrameToCanvas(prevFrame, _animOnionCanvas);
+            AnimOnionImage.InvalidateVisual();
+            AnimOnionImage.IsVisible = true;
+        }
+        else
+        {
+            AnimOnionImage.IsVisible = false;
+        }
+
         AnimFrameText.Text = frame.IsEmpty
             ? $"frame {index + 1} / {_animAsset.FrameCount}  (empty)"
             : $"frame {index + 1} / {_animAsset.FrameCount}  at {frame.X},{frame.Y}";
@@ -2541,18 +2738,21 @@ public partial class MainWindow : Window
             return;
 
         bool onBackground = AnimBackground.IsVisible;
-        Canvas.SetLeft(AnimFrameImage, onBackground ? _animAsset.Bounds.X : 0);
-        Canvas.SetTop(AnimFrameImage, onBackground ? _animAsset.Bounds.Y : 0);
+        int left = onBackground ? _animAsset.Bounds.X : 0;
+        int top = onBackground ? _animAsset.Bounds.Y : 0;
+        Canvas.SetLeft(AnimFrameImage, left);
+        Canvas.SetTop(AnimFrameImage, top);
+        Canvas.SetLeft(AnimOnionImage, left);
+        Canvas.SetTop(AnimOnionImage, top);
     }
 
-    /// <summary>Clears the surface and blits one frame at its offset inside the bounding box.</summary>
-    private void PaintAnimationFrame(SpriteFrame frame)
+    private void PaintFrameToCanvas(SpriteFrame frame, WriteableBitmap? target)
     {
-        if (_animAsset is null || _animCanvas is null)
+        if (_animAsset is null || target is null)
             return;
 
         (int bx, int by, int bw, int bh) = _animAsset.Bounds;
-        using (Avalonia.Platform.ILockedFramebuffer fb = _animCanvas.Lock())
+        using (Avalonia.Platform.ILockedFramebuffer fb = target.Lock())
         {
             unsafe
             {
@@ -2573,7 +2773,12 @@ public partial class MainWindow : Window
                 }
             }
         }
-        // The bitmap object is unchanged; tell the Image its pixels are not.
+    }
+
+    /// <summary>Clears the surface and blits one frame at its offset inside the bounding box.</summary>
+    private void PaintAnimationFrame(SpriteFrame frame)
+    {
+        PaintFrameToCanvas(frame, _animCanvas);
         AnimFrameImage.InvalidateVisual();
     }
 
@@ -2699,6 +2904,177 @@ public partial class MainWindow : Window
     {
         _animZoom.Zoom100();
         e.Handled = true;
+    }
+
+    private void AnimOnionToggle_Click(object? sender, RoutedEventArgs e)
+    {
+        ShowAnimationFrame(_animFrameIndex);
+    }
+
+    private void AnimSpeedCombo_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (AnimSpeedCombo?.SelectedItem is ComboBoxItem item && item.Content is string text)
+        {
+            text = text.TrimEnd('×', 'x', ' ');
+            if (double.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out double mult) && mult > 0)
+            {
+                _animSpeedMultiplier = mult;
+                if (_animTimer is not null)
+                    _animTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, _settings.AnimationFps * _animSpeedMultiplier));
+            }
+        }
+    }
+
+    private async void AnimExportFrame_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_animAsset is null || _animFrames is null || _animFrameIndex < 0 || _animFrameIndex >= _animAsset.FrameCount)
+            return;
+
+        SpriteFrame frame = _animFrames[_animFrameIndex] ??= _animAsset.DecodeFrame(_animFrameIndex);
+        if (frame.Image is null)
+        {
+            await Dialogs.ShowMessageBox(this, "The current frame has no pixel data to export.", "Runaway Explorer", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        string nodeStem = _selectedNode is not null ? Path.GetFileNameWithoutExtension(BatchExporter.ExportFileName(_selectedNode)) : "frame";
+        string defaultName = $"{nodeStem}_frame_{_animFrameIndex:0000}_x{frame.X}_y{frame.Y}.png";
+        await ExportImageAsync(frame.Image, defaultName);
+    }
+
+    private async void DialoguePlayAll_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_isPlayingDialogueSequence)
+            return;
+
+        if (_vfs is null || _selectedNode is null)
+            return;
+
+        var targetNodes = _selectedNode.IsDirectory ? _selectedNode.Children : (_selectedNode.Parent?.Children ?? [_selectedNode]);
+        var voicedEntries = DialogueTranscriptWriter.ExtractEntries(targetNodes)
+            .Where(entry => entry.VoiceClipIndex >= 0)
+            .ToList();
+
+        if (voicedEntries.Count == 0)
+        {
+            DialogueStatusText.Text = "No voiced clips found in selected dialogue.";
+            return;
+        }
+
+        _dialoguePlayCts?.Cancel();
+        _dialoguePlayCts = new CancellationTokenSource();
+        CancellationToken ct = _dialoguePlayCts.Token;
+
+        _isPlayingDialogueSequence = true;
+        DialoguePlayAllButton.IsEnabled = false;
+        DialogueStopButton.IsEnabled = true;
+
+        try
+        {
+            for (int i = 0; i < voicedEntries.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var entry = voicedEntries[i];
+                string preview = entry.Text.Length > 40 ? entry.Text[..37] + "..." : entry.Text;
+                DialogueStatusText.Text = $"[{i + 1}/{voicedEntries.Count}] {entry.DisplayName}: \"{preview}\"";
+
+                FsNode? voiceNode = _vfs.FindVoiceClip(entry.VoiceClipIndex);
+                if (voiceNode is not null)
+                {
+                    if (ResourceLoader.Load(voiceNode, _vfs, _settings, _tempFiles) is SoundResource sound)
+                    {
+                        _mediaPlayer.Open(sound.TempFilePath);
+                        _mediaPlayer.Play();
+                        double durationSec = sound.Pcm.DurationSeconds(voiceNode.Size);
+                        if (durationSec <= 0) durationSec = 2.5;
+                        await Task.Delay(TimeSpan.FromSeconds(durationSec + 0.3), ct);
+                    }
+                }
+                else
+                {
+                    await Task.Delay(1000, ct);
+                }
+            }
+            DialogueStatusText.Text = "Finished dialogue playback.";
+        }
+        catch (OperationCanceledException)
+        {
+            DialogueStatusText.Text = "Playback stopped.";
+        }
+        catch (Exception ex)
+        {
+            Log.Exception("Dialogue playback", ex);
+            DialogueStatusText.Text = "Playback error.";
+        }
+        finally
+        {
+            _mediaPlayer.Stop();
+            _isPlayingDialogueSequence = false;
+            DialoguePlayAllButton.IsEnabled = true;
+            DialogueStopButton.IsEnabled = false;
+        }
+    }
+
+    private void DialogueStop_Click(object? sender, RoutedEventArgs e)
+    {
+        _dialoguePlayCts?.Cancel();
+        _mediaPlayer.Stop();
+        _isPlayingDialogueSequence = false;
+        DialoguePlayAllButton.IsEnabled = true;
+        DialogueStopButton.IsEnabled = false;
+        DialogueStatusText.Text = "Playback stopped.";
+    }
+
+    private async void DialogueExportTxt_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_selectedNode is null) return;
+        var nodes = _selectedNode.IsDirectory ? _selectedNode.Children : [_selectedNode];
+        string title = _selectedNode.DisplayName;
+        string text = DialogueTranscriptWriter.WriteText(nodes, title);
+        string defaultName = $"{BatchExporter.SanitizeSegment(_selectedNode.Name)}_transcript.txt";
+        await ExportTextAsync(text, defaultName);
+    }
+
+    private async void DialogueExportSrt_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_selectedNode is null) return;
+        var nodes = _selectedNode.IsDirectory ? _selectedNode.Children : [_selectedNode];
+        string srt = DialogueTranscriptWriter.WriteSrt(nodes);
+        string defaultName = $"{BatchExporter.SanitizeSegment(_selectedNode.Name)}_subtitles.srt";
+        string? path = await Dialogs.ShowSaveFileDialog(this, "Export Subtitles (SRT)", defaultName,
+            [new FilePickerFileType("SubRip Subtitles") { Patterns = ["*.srt"] }], _settings.LastExportDir);
+        if (path is null) return;
+        try
+        {
+            await File.WriteAllTextAsync(path, srt);
+            RememberExportFolder(path);
+            SetStatus($"Exported {path}");
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.ShowMessageBox(this, $"Export failed:\n{ex.Message}", "Runaway Explorer", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void DialogueExportCsv_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_selectedNode is null) return;
+        var nodes = _selectedNode.IsDirectory ? _selectedNode.Children : [_selectedNode];
+        string csv = DialogueTranscriptWriter.WriteCsv(nodes);
+        string defaultName = $"{BatchExporter.SanitizeSegment(_selectedNode.Name)}_dialogue.csv";
+        string? path = await Dialogs.ShowSaveFileDialog(this, "Export Dialogue CSV", defaultName,
+            [new FilePickerFileType("CSV Spreadsheet") { Patterns = ["*.csv"] }], _settings.LastExportDir);
+        if (path is null) return;
+        try
+        {
+            await File.WriteAllTextAsync(path, csv);
+            RememberExportFolder(path);
+            SetStatus($"Exported {path}");
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.ShowMessageBox(this, $"Export failed:\n{ex.Message}", "Runaway Explorer", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

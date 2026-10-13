@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="RunawayExplorer.Views.AnimationExportOverlay"
+<UserControl x:Class="RunawayExplorer.Views.AnimationExportOverlay"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Styles>
@@ -67,6 +67,15 @@
                             <StackPanel Margin="8,0,0,0">
                                 <TextBlock Text="{DynamicResource ExportAnim_Sequence_Title}" Classes="settingTitle"/>
                                 <TextBlock Text="{DynamicResource ExportAnim_Sequence_Desc}" Classes="settingSubtitle"/>
+                            </StackPanel>
+                        </RadioButton>
+                    </Border>
+
+                    <Border x:Name="SpriteSheetCard" Classes="settingCard" PointerPressed="SpriteSheetCard_PointerPressed">
+                        <RadioButton x:Name="SpriteSheetRadio" GroupName="ExportOverlayChoice">
+                            <StackPanel Margin="8,0,0,0">
+                                <TextBlock Text="Sprite Sheet (PNG + JSON Atlas)" Classes="settingTitle"/>
+                                <TextBlock Text="Packs all frames into a grid image with coordinate atlas metadata." Classes="settingSubtitle"/>
                             </StackPanel>
                         </RadioButton>
                     </Border>

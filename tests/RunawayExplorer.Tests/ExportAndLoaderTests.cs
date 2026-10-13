@@ -40,6 +40,54 @@ public class ResourceLoaderTests
         }
     }
 
+    /// <summary>
+    /// The actor's animations load through the same viewer, but the loader has to fetch their frame
+    /// records from a second slot and read a head's with the head rule -- see ActorArchive.
+    /// </summary>
+    [Fact]
+    public void ActorAnimationsLoadWithTheirRecordsFromASeparateSlot()
+    {
+        var install = new FakeInstall();
+        using (install)
+        {
+            File.WriteAllBytes(
+                Path.Combine(install.Root, "Resource", "RESOURCE.000"),
+                SyntheticAssets.ActorGlobalArchive([10, 44]));
+
+            var vfs = VirtualFileSystem.Init(install.Root);
+            var temp = new TempFileTracker();
+            var settings = new AppSettings();
+            FsNode actor = vfs.FindNode(vfs.Root, "\\Characters\\Actor")!;
+
+            FsNode walkNode = actor.Children.Single(c => c.Name == "g010-walk0");
+            var walk = Assert.IsType<AnimationResource>(ResourceLoader.Load(walkNode, vfs, settings, temp));
+            var walkAsset = Assert.IsType<CharacterSpriteAsset>(walk.Asset);
+            Assert.Equal(ActorArchive.WalkFrames, walkAsset.FrameCount);
+            Assert.NotNull(walkAsset.Palette);
+            Assert.Null(walkAsset.Verify());
+
+            // A head is 40 frames and is sized from its runs, not from the body box its record carries.
+            FsNode headNode = actor.Children.Single(c => c.Name == "g010-head0");
+            var head = Assert.IsType<AnimationResource>(ResourceLoader.Load(headNode, vfs, settings, temp));
+            var headAsset = Assert.IsType<CharacterSpriteAsset>(head.Asset);
+            Assert.Equal(ActorArchive.HeadFrames, headAsset.FrameCount);
+            Assert.Null(headAsset.Verify());
+            Assert.Equal((7, 5), (headAsset.Bounds.Width, headAsset.Bounds.Height));
+
+            // A different group resolves a different palette, because each group carries its own.
+            FsNode otherNode = actor.Children.Single(c => c.Name == "g044-walk0");
+            var other = Assert.IsType<AnimationResource>(ResourceLoader.Load(otherNode, vfs, settings, temp));
+            var a = new byte[4];
+            var b = new byte[4];
+            walkAsset.Palette!.ToBgra(1, a, 0);
+            Assert.IsType<CharacterSpriteAsset>(other.Asset).Palette!.ToBgra(1, b, 0);
+            Assert.NotEqual(a, b);
+
+            // And it exports under the tree's own name, like every other animation.
+            Assert.Equal("g010-walk0.png", BatchExporter.ExportFileName(walkNode));
+        }
+    }
+
     [Fact]
     public void CharacterLibraryEntryLoadsAsAnAnimationWithItsBlocksPalette()
     {
@@ -289,6 +337,24 @@ public class BatchExporterTests
         Assert.Equal(asset.FrameCount, written);
         string[] files = Directory.GetFiles(outDir, "custom_frame_*.png");
         Assert.Equal(written, files.Length);
+    }
+
+    [Fact]
+    public void ExportSpriteSheet_WritesPngAndJsonAtlas()
+    {
+        using var install = new FakeInstall();
+        VirtualFileSystem vfs = VirtualFileSystem.Init(install.Root);
+        FsNode animNode = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.H09\\e03")!;
+        byte[] data = vfs.ReadBytes(animNode);
+        SpriteAsset asset = SpriteAsset.Parse(data)!;
+
+        string outPng = Path.Combine(install.Root, "sheet.png");
+        (int frames, string pngPath, string jsonPath) = BatchExporter.ExportSpriteSheet(asset, outPng, 15.0);
+
+        Assert.Equal(asset.FrameCount, frames);
+        Assert.True(File.Exists(pngPath));
+        Assert.True(File.Exists(jsonPath));
+        Assert.Contains("\"FrameCount\": 2", File.ReadAllText(jsonPath));
     }
 
     [Fact]

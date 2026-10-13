@@ -82,6 +82,9 @@
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="{DynamicResource Menu_File}">
+                <MenuItem Header="Auto-Detect Installed Games..." Click="AutoDetectGames_Click"
+                          ToolTip.Tip="Scan drives for Steam, GOG, and retail installations of all 6 games."/>
+                <Separator/>
                 <MenuItem Header="{DynamicResource Menu_Export}" Click="Export_Click" InputGesture="Ctrl+E"/>
                 <MenuItem Header="{DynamicResource Menu_ExportRaw}" Click="ExportRaw_Click"/>
                 <MenuItem Header="{DynamicResource Menu_BatchExport}" Click="BatchExport_Click"
@@ -394,6 +397,21 @@
                                 <Button Content="◀" Width="36" Height="36" Margin="0,0,2,0" Click="AnimStepBack_Click" ToolTip.Tip="Previous frame (Left)"/>
                                 <Button Content="▶" Width="36" Height="36" Margin="0,0,12,0" Click="AnimStepForward_Click" ToolTip.Tip="Next frame (Right)"/>
                                 <TextBlock x:Name="AnimFrameText" VerticalAlignment="Center" FontFamily="Consolas" FontSize="12" Opacity="0.85" Text="frame 0 / 0"/>
+                                <Border Width="1" Background="#33FFFFFF" Margin="10,6,10,6"/>
+                                <ToggleButton x:Name="AnimOnionToggle" Content="Onion Skin" Padding="8,4"
+                                              Margin="0,0,6,0" Click="AnimOnionToggle_Click"
+                                              ToolTip.Tip="Ghost previous frame with low opacity"/>
+                                <ComboBox x:Name="AnimSpeedCombo" SelectedIndex="2" Margin="0,0,6,0" Width="80"
+                                          SelectionChanged="AnimSpeedCombo_SelectionChanged"
+                                          ToolTip.Tip="Playback speed multiplier">
+                                    <ComboBoxItem Content="0.25×"/>
+                                    <ComboBoxItem Content="0.5×"/>
+                                    <ComboBoxItem Content="1.0×"/>
+                                    <ComboBoxItem Content="1.5×"/>
+                                    <ComboBoxItem Content="2.0×"/>
+                                </ComboBox>
+                                <Button x:Name="AnimExportFrameButton" Content="Export Frame" Padding="8,4"
+                                        Click="AnimExportFrame_Click" ToolTip.Tip="Export current frame to PNG"/>
                             </StackPanel>
                         </DockPanel>
                     </StackPanel>
@@ -408,6 +426,8 @@
                                            RenderOptions.BitmapInterpolationMode="None"/>
                                     <Rectangle x:Name="AnimBoundsRect" Stroke="#80E0A030" StrokeThickness="1" StrokeDashArray="4,3"
                                                IsHitTestVisible="False"/>
+                                    <Image x:Name="AnimOnionImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                           RenderOptions.BitmapInterpolationMode="None" Opacity="0.35" IsVisible="False"/>
                                     <Image x:Name="AnimFrameImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None"/>
                                 </Canvas>
@@ -416,13 +436,31 @@
                     </ScrollViewer>
                 </DockPanel>
 
-                <!-- Text: hex dumps, lip-sync tracks, errors. -->
-                <TextBox x:Name="TextPanel" IsVisible="False"
-                         IsReadOnly="True"
-                         ContextMenu="{StaticResource PreviewContextMenu}"
-                         FontFamily="Consolas" FontSize="12"
-                         TextWrapping="NoWrap" AcceptsReturn="True"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                <!-- Text: hex dumps, lip-sync tracks, dialogue transcripts, errors. -->
+                <DockPanel x:Name="TextContainer" IsVisible="False">
+                    <Border x:Name="DialogueToolbar" DockPanel.Dock="Top" Margin="0,0,0,8" Padding="6,4"
+                            Background="#18181f" BorderBrush="#2a2a35" BorderThickness="1" CornerRadius="4"
+                            IsVisible="False">
+                        <DockPanel>
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Spacing="6">
+                                <Button Content="Export .TXT" Padding="8,4" Click="DialogueExportTxt_Click" ToolTip.Tip="Export full transcript as plain text"/>
+                                <Button Content="Export .SRT" Padding="8,4" Click="DialogueExportSrt_Click" ToolTip.Tip="Export timed SubRip subtitles"/>
+                                <Button Content="Export .CSV" Padding="8,4" Click="DialogueExportCsv_Click" ToolTip.Tip="Export dialogue spreadsheet"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="DialoguePlayAllButton" Content="▶ Play Dialogue" Padding="10,4" Click="DialoguePlayAll_Click" ToolTip.Tip="Play voiced dialogue lines continuously in sequence"/>
+                                <Button x:Name="DialogueStopButton" Content="⏹ Stop" Padding="8,4" Click="DialogueStop_Click" IsEnabled="False"/>
+                                <TextBlock x:Name="DialogueStatusText" VerticalAlignment="Center" FontSize="11" Opacity="0.8" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                    <TextBox x:Name="TextPanel" IsVisible="False"
+                             IsReadOnly="True"
+                             ContextMenu="{StaticResource PreviewContextMenu}"
+                             FontFamily="Consolas" FontSize="12"
+                             TextWrapping="NoWrap" AcceptsReturn="True"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                </DockPanel>
 
                 <!-- Sound: PCM wrapped as WAV, played through LibVLC. -->
                 <StackPanel x:Name="SoundPanel" IsVisible="False" VerticalAlignment="Top" Margin="0,24,0,0">

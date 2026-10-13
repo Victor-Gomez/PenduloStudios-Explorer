@@ -100,13 +100,15 @@ public static class BatchExporter
             EntryKind.Background when img is not null => $"{node.Name}_{img.Width}x{img.Height}{(img.IsMask ? "_mask" : "")}.png",
             EntryKind.Mask when img is not null => $"{node.Name}_{img.Width}x{img.Height}_mask.png",
             EntryKind.Overlay when img is not null => $"{node.Name}_{img.Width}x{img.Height}_at_{img.X}_{img.Y}.png",
-            EntryKind.Animation or EntryKind.CharacterAnimation => $"{node.Name}.png",
+            EntryKind.Animation or EntryKind.CharacterAnimation or EntryKind.ActorAnimation => $"{node.Name}.png",
             EntryKind.Font => $"{node.Name}.png",
             EntryKind.Music or EntryKind.Ambient or EntryKind.Cinematic or EntryKind.Voice =>
                 node.Audio?.Format == AudioFormat.Mp3 ? $"{node.Name}.mp3" : $"{node.Name}.wav",
-            // DATAVB02.001, DATAVB02.002, ... are different videos: keep the numeric suffix in the name.
-            EntryKind.Video => $"{Path.GetFileNameWithoutExtension(node.Name)}_{Path.GetExtension(node.Name).TrimStart('.')}.bik",
-            EntryKind.Viseme or EntryKind.Dialogue => $"{node.Name}.txt",
+            EntryKind.Video => Path.GetExtension(node.Name).Equals(".smk", StringComparison.OrdinalIgnoreCase)
+                ? node.Name
+                : $"{Path.GetFileNameWithoutExtension(node.Name)}_{Path.GetExtension(node.Name).TrimStart('.')}.bik",
+            EntryKind.Viseme or EntryKind.Dialogue or EntryKind.SceneTable => $"{node.Name}.txt",
+            EntryKind.Savegame => $"{node.Name}.png",
             _ => $"{node.Name}.bin",
         };
     }
@@ -153,7 +155,7 @@ public static class BatchExporter
                 {
                     image = info is not null && info.Width * info.Height * 2 == data.Length
                         ? RasterDecoder.Decode(data, info.Width, info.Height)
-                        : RasterDecoder.TryDecode(data)?.Image ?? throw new InvalidDataException("not a raster");
+                        : RasterDecoder.TryDecode(data, vfs.GameVersion)?.Image ?? throw new InvalidDataException("not a raster");
                 }
                 PngWriter.Write(image, path);
                 return BatchExportResult.Exported;
@@ -216,9 +218,22 @@ public static class BatchExporter
             }
 
             case EntryKind.CharacterAnimation:
+            case EntryKind.ActorAnimation:
             {
-                CharacterSpriteAsset asset = CharacterSpriteAsset.Parse(vfs.ReadBytes(file)) ?? throw new InvalidDataException("not a character animation");
-                asset.Palette = vfs.CharacterPaletteFor(file);
+                int bpp = vfs.GameVersion == GameVersion.Runaway1 ? 1 : 2;
+                CharacterSpriteAsset asset;
+                if (file.Kind == EntryKind.ActorAnimation && file.ArchivePath is not null && ActorArchive.FromDataSlot(file.EntryIndex) is { } animation)
+                {
+                    byte[]? table = ActorArchive.ReadFrameTable(file.ArchivePath, animation);
+                    if (table is null) throw new InvalidDataException("no actor frame table");
+                    asset = CharacterSpriteAsset.Parse(table, animation.FrameCount, vfs.ReadBytes(file), animation.Geometry, bpp) ?? throw new InvalidDataException("not an actor animation");
+                }
+                else
+                {
+                    asset = CharacterSpriteAsset.Parse(vfs.ReadBytes(file), bpp) ?? throw new InvalidDataException("not a character animation");
+                }
+                if (bpp == 1)
+                    asset.Palette = vfs.CharacterPaletteFor(file);
                 ExportAnimation(asset, path, options.AnimationFps, options.AnimationFrames);
                 return BatchExportResult.Exported;
             }
@@ -289,6 +304,50 @@ public static class BatchExporter
                 return BatchExportResult.Exported;
             }
 
+            case EntryKind.Savegame:
+            {
+                byte[] data = vfs.ReadBytes(file);
+                if (data.Length >= SavegameArchive.ThumbnailBytes)
+                {
+                    DecodedImage thumb = SavegameArchive.DecodeThumbnail(data);
+                    PngWriter.Write(thumb, path);
+                    return BatchExportResult.Exported;
+                }
+                return BatchExportResult.Failed;
+            }
+
+            case EntryKind.SceneTable:
+            {
+                byte[] data = vfs.ReadBytes(file);
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Scene Table Entry: {file.Name}");
+                if (file.Image is { } img)
+                    sb.AppendLine($"Scene Geometry: {img.Width}×{img.Height} px");
+
+                int width = data.Length >= 2 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(data) : 0;
+                int height = data.Length >= 4 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(data[2..]) : 0;
+                sb.AppendLine($"Dimensions: {width}×{height} px");
+                sb.AppendLine($"Record Size: {data.Length} bytes");
+
+                var cameraPoints = new List<(float X, float Y)>();
+                for (int p = 20; p + 8 <= data.Length && p < 120; p += 8)
+                {
+                    float x = System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(p));
+                    float y = System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(p + 4));
+                    if (float.IsFinite(x) && float.IsFinite(y) && x >= 0 && x <= 4000 && y >= 0 && y <= 3000)
+                        cameraPoints.Add((x, y));
+                }
+                if (cameraPoints.Count > 0)
+                {
+                    sb.AppendLine($"\nCamera / Viewpoint Coordinates ({cameraPoints.Count}):");
+                    for (int i = 0; i < cameraPoints.Count; i++)
+                        sb.AppendLine($"  Point {i + 1}: ({cameraPoints[i].X:F1}, {cameraPoints[i].Y:F1})");
+                }
+
+                File.WriteAllText(path, sb.ToString());
+                return BatchExportResult.Exported;
+            }
+
             default:
                 return BatchExportResult.SkippedUnsupported;
         }
@@ -328,6 +387,16 @@ public static class BatchExporter
             written++;
         }
         return written;
+    }
+
+    /// <summary>Exports the animation as a packed sprite sheet PNG and accompanying JSON atlas.</summary>
+    public static (int Frames, string PngPath, string JsonPath) ExportSpriteSheet(IAnimationAsset asset, string pngPath, double fps)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentException.ThrowIfNullOrEmpty(pngPath);
+        SpriteSheetWriter.Write(asset, pngPath, fps);
+        string jsonPath = Path.ChangeExtension(pngPath, ".json");
+        return (asset.FrameCount, pngPath, jsonPath);
     }
 
     private static string RelativePath(string rootPath, string fullPath)

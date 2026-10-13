@@ -22,6 +22,49 @@ public static class ResourceLoader
         bool indexed = vfs.GameVersion == GameVersion.HollywoodMonsters;
         int bytesPerPixel = indexed ? 1 : 2;
 
+        if (node.IsDirectory)
+        {
+            if (node.ArchivePath is not null && Path.GetFileName(node.ArchivePath).Equals("RESOURCE.005", StringComparison.OrdinalIgnoreCase))
+            {
+                byte[] dbBytes = File.ReadAllBytes(node.ArchivePath);
+                if (ChapterInteractionArchive.IsInteractionDatabase(dbBytes))
+                {
+                    var db = ChapterInteractionArchive.Parse(dbBytes);
+                    if (node.Name.StartsWith("Scene ", StringComparison.OrdinalIgnoreCase) && int.TryParse(node.Name.AsSpan(6), out int sceneId))
+                    {
+                        int chapterId = node.Parent is { } parent && parent.Name.StartsWith("Chapter ", StringComparison.OrdinalIgnoreCase) && int.TryParse(parent.Name.AsSpan(8), out int ch) ? ch : 0;
+                        string graph = db.FormatSceneGraph(chapterId, sceneId);
+                        string mermaid = db.GenerateMermaid(chapterId, sceneId);
+                        return new TextResource($"{graph}\nMermaid Flowchart:\n```mermaid\n{mermaid}\n```\n");
+                    }
+                    if (node.Name.StartsWith("Chapter ", StringComparison.OrdinalIgnoreCase) && int.TryParse(node.Name.AsSpan(8), out int chapterNum))
+                    {
+                        var recs = db.GetRecordsForChapter(chapterNum).ToList();
+                        var sb = new StringBuilder();
+                        sb.AppendLine($"=== Runaway 3 — Chapter {chapterNum} Interaction Directory ===");
+                        sb.AppendLine($"Total Records: {recs.Count:N0}");
+                        var scenes = db.GetScenesForChapter(chapterNum);
+                        sb.AppendLine($"Scenes ({scenes.Count}): {string.Join(", ", scenes.Select(s => $"Scene {s:D3}"))}");
+                        sb.AppendLine();
+                        sb.AppendLine("Scene Summary:");
+                        sb.AppendLine("Scene ID | Triggers | Objects | Sample Triggers");
+                        sb.AppendLine("---------+----------+---------+--------------------------------");
+                        foreach (int sc in scenes)
+                        {
+                            var sRecs = db.GetRecordsForScene(chapterNum, sc);
+                            int objs = sRecs.Select(r => r.ObjectId).Distinct().Count();
+                            var samples = sRecs.Select(r => r.DecodedLabel).Where(l => !string.IsNullOrWhiteSpace(l)).Take(3);
+                            string sampleText = string.Join(", ", samples);
+                            if (sampleText.Length > 40) sampleText = sampleText[..37] + "...";
+                            sb.AppendLine($"Scene {sc,3:D3} |  {sRecs.Count,5}   |   {objs,3}   | {sampleText}");
+                        }
+                        return new TextResource(sb.ToString());
+                    }
+                    return new TextResource(ChapterInteractionArchive.FormatSummary(db));
+                }
+            }
+        }
+
         try
         {
             switch (node.Kind)
@@ -69,7 +112,7 @@ public static class ResourceLoader
                     if (info is null || info.Width * info.Height * 2 != data.Length)
                     {
                         // The scan said raster but the geometry is missing or stale: detect again.
-                        if (RasterDecoder.TryDecode(data) is not { } re)
+                        if (RasterDecoder.TryDecode(data, vfs.GameVersion) is not { } re)
                             return new ErrorResource($"'{node.GetPath()}' no longer decodes as a raster.");
                         return new ImageResource(re.Image, 0, 0, false, re.Info.IsMask ? "mask layer" : "background");
                     }
@@ -164,6 +207,13 @@ public static class ResourceLoader
                 case EntryKind.Animation:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (vfs.GameVersion == GameVersion.HollywoodMonsters && data.Length == HollywoodItemIconsAsset.TotalBytes)
+                    {
+                        var icons = new HollywoodItemIconsAsset(data);
+                        IndexedPalette? sharedPal = vfs.SharedPalette(80);
+                        icons.Palette = sharedPal is not null ? IndexedPalette.Grayscale.WithTail(sharedPal) : vfs.ScenePaletteFor(node);
+                        return new AnimationResource(icons);
+                    }
                     SpriteAsset? asset = SpriteAsset.Parse(data, bytesPerPixel);
                     if (asset is null)
                         return new ErrorResource($"'{node.GetPath()}' no longer parses as a sprite animation.");
@@ -174,9 +224,31 @@ public static class ResourceLoader
                 case EntryKind.CharacterAnimation:
                 {
                     byte[] data = vfs.ReadBytes(node);
-                    CharacterSpriteAsset? asset = CharacterSpriteAsset.Parse(data);
+                    int bpp = vfs.GameVersion == GameVersion.Runaway1 ? 1 : 2;
+                    CharacterSpriteAsset? asset = CharacterSpriteAsset.Parse(data, bpp);
                     if (asset is null)
                         return new ErrorResource($"'{node.GetPath()}' no longer parses as a character animation.");
+                    if (bpp == 1)
+                        asset.Palette = vfs.CharacterPaletteFor(node);
+                    return new AnimationResource(asset);
+                }
+
+                case EntryKind.ActorAnimation:
+                {
+                    // The node carries the run slot; everything else about the animation follows from
+                    // which slot that is, so the frame table is fetched rather than remembered.
+                    if (node.ArchivePath is null || ActorArchive.FromDataSlot(node.EntryIndex) is not { } animation)
+                        return new ErrorResource($"'{node.GetPath()}' is not a slot any actor group claims.");
+
+                    byte[]? table = ActorArchive.ReadFrameTable(node.ArchivePath, animation);
+                    if (table is null)
+                        return new ErrorResource($"'{node.GetPath()}' has no frame table at slot {animation.TableSlot}.");
+
+                    byte[] data = vfs.ReadBytes(node);
+                    CharacterSpriteAsset? asset = CharacterSpriteAsset.Parse(
+                        table, animation.FrameCount, data, animation.Geometry);
+                    if (asset is null)
+                        return new ErrorResource($"'{node.GetPath()}' no longer parses as an actor animation.");
                     asset.Palette = vfs.CharacterPaletteFor(node);
                     return new AnimationResource(asset);
                 }
@@ -228,13 +300,14 @@ public static class ResourceLoader
 
                 case EntryKind.Video:
                 {
-                    string path = tempFiles.CreateTempFile(".bik");
+                    string ext = Path.GetExtension(node.Name).Equals(".smk", StringComparison.OrdinalIgnoreCase) ? ".smk" : ".bik";
+                    string path = tempFiles.CreateTempFile(ext);
                     using (FileStream dst = File.Create(path))
                     {
                         if (!vfs.RestoreVideo(node, dst))
                             return new ErrorResource($"No header for '{node.Name}' in the DATAVC00 keyfile; the video cannot be restored.");
                     }
-                    return new VideoResource(path);
+                    return new VideoResource(path, node.Subtitle);
                 }
 
                 case EntryKind.Viseme:
@@ -251,9 +324,9 @@ public static class ResourceLoader
                 case EntryKind.Dialogue:
                 {
                     var sb = new StringBuilder();
-                    if (indexed)
+                    if (indexed || node.VoiceClipIndex >= 0 || node.Name.StartsWith("line ") || node.Name.StartsWith("label "))
                     {
-                        // Hollywood Monsters' script stores the pairing rather than implying it from the
+                        // Script stores the pairing rather than implying it from the
                         // row number, and it names a recording for only some of its rows.
                         sb.Append("Script row ").Append(node.Name);
                         if (node.Parent is { } stage)
@@ -282,6 +355,18 @@ public static class ResourceLoader
 
                 case EntryKind.Font:
                 {
+                    if (node.ArchivePath is not null && Path.GetFileName(node.ArchivePath).Equals("RESOURCE.FNT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        byte[] fntBytes = File.ReadAllBytes(node.ArchivePath);
+                        var fonts = YesterdayFontArchive.ReadFonts(fntBytes);
+                        var match = fonts.FirstOrDefault(f => f.Index == node.EntryIndex) ?? (fonts.Count > 0 ? fonts[0] : null);
+                        if (match is not null)
+                        {
+                            DecodedImage img = FontDecoder.DecodeRgb24(match.BitmapRgb, match.Glyphs);
+                            return new ImageResource(img, 0, 0, false, $"{match.Name}, {match.Glyphs.Length} glyphs (24-bit outlined)");
+                        }
+                    }
+
                     byte[] data = vfs.ReadBytes(node);
                     int recordSize = FontDecoder.RecordSizeFor(vfs.GameVersion);
                     // A glyph table entry (a whole number of records, small) → informational text.
@@ -311,6 +396,68 @@ public static class ResourceLoader
                     return new ErrorResource($"'{node.GetPath()}' is tagged as a font but its glyph table was not found.");
                 }
 
+                case EntryKind.Savegame:
+                {
+                    byte[] data = vfs.ReadBytes(node);
+                    if (data.Length >= SavegameArchive.ThumbnailBytes)
+                    {
+                        DecodedImage thumb = SavegameArchive.DecodeThumbnail(data);
+                        int slot = SavegameArchive.GetSlotNumber(node.Name);
+                        SavegameInfo info = SavegameArchive.ReadMetadata(data, slot, vfs.GameVersion);
+                        string sceneDesc = info.SceneArchiveName is not null
+                            ? $"{info.SceneArchiveName} — {RunawayExplorer.Core.Metadata.SceneCatalog.GetSceneTitle(info.SceneArchiveName, vfs.Language, vfs.GameVersion)}"
+                            : $"Scene {info.SceneId}";
+
+                        var sb = new StringBuilder();
+                        sb.AppendLine($"Savegame Slot {slot:000}");
+                        if (!string.IsNullOrEmpty(info.Name))
+                            sb.AppendLine($"Name: {info.Name}");
+                        if (!string.IsNullOrEmpty(info.Action))
+                            sb.AppendLine($"Action: {info.Action}");
+                        sb.AppendLine($"Scene: {sceneDesc}");
+                        sb.AppendLine($"Actor Position: ({info.ActorX}, {info.ActorY})");
+                        sb.AppendLine($"Scene Viewport: ({info.ViewX}, {info.ViewY})");
+                        sb.AppendLine($"Inventory Count: {info.InventoryCount} items");
+                        sb.AppendLine($"Thumbnail: 204×120 RGB565 (5x scale reduction)");
+
+                        return new ImageResource(thumb, 0, 0, false, sb.ToString().TrimEnd());
+                    }
+                    return new ErrorResource($"Save file '{node.Name}' is truncated ({data.Length} bytes).");
+                }
+
+                case EntryKind.SceneTable:
+                {
+                    byte[] data = vfs.ReadBytes(node);
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"Scene Table Entry: {node.Name}");
+                    if (node.Image is { } img)
+                        sb.AppendLine($"Scene Geometry: {img.Width}×{img.Height} px");
+
+                    int width = data.Length >= 2 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(data) : 0;
+                    int height = data.Length >= 4 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(data[2..]) : 0;
+                    sb.AppendLine($"Dimensions: {width}×{height} px");
+                    sb.AppendLine($"Record Size: {data.Length} bytes");
+
+                    var cameraPoints = new List<(float X, float Y)>();
+                    for (int p = 20; p + 8 <= data.Length && p < 120; p += 8)
+                    {
+                        float x = System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(p));
+                        float y = System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(p + 4));
+                        if (float.IsFinite(x) && float.IsFinite(y) && x >= 0 && x <= 4000 && y >= 0 && y <= 3000)
+                            cameraPoints.Add((x, y));
+                    }
+                    if (cameraPoints.Count > 0)
+                    {
+                        sb.AppendLine($"\nCamera / Viewpoint Coordinates ({cameraPoints.Count}):");
+                        for (int i = 0; i < cameraPoints.Count; i++)
+                            sb.AppendLine($"  Point {i + 1}: ({cameraPoints[i].X:F1}, {cameraPoints[i].Y:F1})");
+                    }
+
+                    sb.AppendLine("\nRaw hex view:");
+                    sb.Append(RawFormat.ToHexDump(data.AsSpan(0, Math.Min(data.Length, 256))));
+                    return new TextResource(sb.ToString());
+                }
+
                 case EntryKind.Data:
                 case EntryKind.GlobalData:
                 case EntryKind.RawFile:
@@ -320,7 +467,7 @@ public static class ResourceLoader
                     int take = (int)Math.Min(s.Length, RawFormat.MaxDumpBytes);
                     var head = new byte[take];
                     s.ReadExactly(head);
-                    byte[]? fullData = node.Kind == EntryKind.Data && node.Size == 1536 ? vfs.ReadBytes(node) : null;
+                    byte[]? fullData = node.Kind == EntryKind.Data && (node.Size == 1536 || node.Size == RouteDecoder.TotalSizeR1 || node.Size == RouteDecoder.TotalSizeR2 || node.Size == CorridorSpanDecoder.TotalSize || node.Size == ChapterInteractionArchive.RecordSize || (node.ArchivePath is not null && Path.GetFileName(node.ArchivePath).Equals("RESOURCE.005", StringComparison.OrdinalIgnoreCase))) ? vfs.ReadBytes(node) : null;
                     string header = DescribeRaw(node, s.Length, fullData, indexed);
                     return new TextResource(header + RawFormat.ToHexDump(head) +
                         (s.Length > take ? $"\n... {s.Length - take:N0} more byte(s) not shown.\n" : string.Empty));
@@ -371,6 +518,13 @@ public static class ResourceLoader
         string what = node.Kind switch
         {
             EntryKind.Data when length == 1536 => "Scene-archive data entry: 1,536-byte Scene Attribute Table (6 parallel 256-byte lookup tables indexed by Mask ID 0..255).",
+            EntryKind.Data when length == RouteDecoder.TotalSizeR1 => "Scene-archive route table: 43,659-byte Precomputed Walk Mesh (21×21 waypoint navigation matrix and zone transition paths).",
+            EntryKind.Data when length == RouteDecoder.TotalSizeR2 => "Scene-archive navigation mesh: 335,529-byte Precomputed Walk Mesh (51×51 waypoint navigation matrix and zone transition paths).",
+            EntryKind.Data when length == CorridorSpanDecoder.TotalSize => "Scene-archive walk corridor table: 704-byte Walkway Perspective Corridor Table (117 scanline trapezoid bounds from Y=483 to Y=599).",
+            EntryKind.Data when length == RouteDecoder.TotalSizeTnbtWaypoints => "Scene-archive waypoint table: 194,560-byte 1080p Waypoint Navigation Table (320-byte route slots with 32-bit (X, Y) coordinate points).",
+            EntryKind.Data when length == RouteDecoder.TotalSizeTnbtHops => "Scene-archive transition table: 589,824-byte 1080p Zone Hop Transition Table.",
+            EntryKind.Data when length == ChapterInteractionArchive.RecordSize && (node.ArchivePath is not null && Path.GetFileName(node.ArchivePath).Equals("RESOURCE.005", StringComparison.OrdinalIgnoreCase)) =>
+                "Runaway 3 interaction record: 220-byte object interaction and event trigger descriptor.",
             EntryKind.Data when indexed && IsPaletteSized(length) => "Scene-archive palette block: 6-bit VGA triples filling the bottom of the 256-colour table. Scenes that ship 176 colours take the top 80 from RESOURCE.000.",
             EntryKind.Data => "Scene-archive data entry. Not an image: one of the per-scene tables whose purpose is still open (see docs/formats).",
             EntryKind.GlobalData => "RESOURCE.000 entry: UI atlas, localised text bitmap, or other global data not yet decoded (see docs/formats/global-data.md).",
@@ -380,9 +534,39 @@ public static class ResourceLoader
         string baseDesc = $"{what}\n{length:N0} byte(s).\n\n";
         if (fullData is not null)
         {
-            string breakdown = FormatAttributeTableBreakdown(fullData);
-            if (!string.IsNullOrEmpty(breakdown))
-                baseDesc += breakdown + "\n\nRaw hex dump:\n";
+            if (length == RouteDecoder.TotalSizeR1 || length == RouteDecoder.TotalSizeR2)
+            {
+                var matrix = RouteDecoder.Parse(fullData);
+                string routeBreakdown = RouteDecoder.FormatSummary(matrix);
+                baseDesc += routeBreakdown + "\n\nRaw hex dump:\n";
+            }
+            else if (length == CorridorSpanDecoder.TotalSize)
+            {
+                var corridor = CorridorSpanDecoder.Parse(fullData);
+                string corridorBreakdown = CorridorSpanDecoder.FormatSummary(corridor);
+                baseDesc += corridorBreakdown + "\n\nRaw hex dump:\n";
+            }
+            else if (length == ChapterInteractionArchive.RecordSize && (node.ArchivePath is not null && Path.GetFileName(node.ArchivePath).Equals("RESOURCE.005", StringComparison.OrdinalIgnoreCase)))
+            {
+                int chId = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(fullData);
+                int scId = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(fullData.AsSpan(4));
+                int obId = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(fullData.AsSpan(8));
+                int acId = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(fullData.AsSpan(12));
+                byte[] payload = fullData[16..];
+                var rec = new InteractionRecord(node.EntryIndex, node.EntryIndex, chId, scId, obId, acId, payload, node.Offset);
+                baseDesc += $"Chapter ID: {chId}\nScene ID: {scId:D3}\nObject ID: {obId:D3}\nAction: {rec.VerbName} (ID {acId})\nTrigger Label: \"{rec.DecodedLabel}\"\nState Flags: {rec.StateTrailer.Count(b => b != 0)} active byte(s) in payload\n\nDecrypted Label Text: \"{rec.DecodedLabel}\"\n";
+            }
+            else if (ChapterInteractionArchive.IsInteractionDatabase(fullData))
+            {
+                var db = ChapterInteractionArchive.Parse(fullData);
+                baseDesc += ChapterInteractionArchive.FormatSummary(db) + "\n\nRaw hex dump:\n";
+            }
+            else
+            {
+                string breakdown = FormatAttributeTableBreakdown(fullData);
+                if (!string.IsNullOrEmpty(breakdown))
+                    baseDesc += breakdown + "\n\nRaw hex dump:\n";
+            }
         }
         return baseDesc;
     }

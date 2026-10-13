@@ -1,4 +1,4 @@
-﻿using System.Threading.Tasks;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -9,7 +9,8 @@ public enum AnimationExportFormat
 {
     Cancel,
     Apng,
-    ImageSequence
+    ImageSequence,
+    SpriteSheet
 }
 
 public partial class AnimationExportOverlay : UserControl
@@ -36,9 +37,11 @@ public partial class AnimationExportOverlay : UserControl
 
     public void Confirm()
     {
-        AnimationExportFormat format = SequenceRadio.IsChecked == true
-            ? AnimationExportFormat.ImageSequence
-            : AnimationExportFormat.Apng;
+        AnimationExportFormat format = SpriteSheetRadio.IsChecked == true
+            ? AnimationExportFormat.SpriteSheet
+            : SequenceRadio.IsChecked == true
+                ? AnimationExportFormat.ImageSequence
+                : AnimationExportFormat.Apng;
         Dismiss(format);
     }
 
@@ -73,6 +76,15 @@ public partial class AnimationExportOverlay : UserControl
         if (e.ClickCount == 2)
         {
             Dismiss(AnimationExportFormat.ImageSequence);
+        }
+    }
+
+    private void SpriteSheetCard_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        SpriteSheetRadio.IsChecked = true;
+        if (e.ClickCount == 2)
+        {
+            Dismiss(AnimationExportFormat.SpriteSheet);
         }
     }
 }
