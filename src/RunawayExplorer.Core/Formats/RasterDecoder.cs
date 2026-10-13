@@ -291,8 +291,8 @@ public static class RasterDecoder
 
     internal static int ResolveFundamentalWidth(ReadOnlySpan<byte> data, int detectedW, int totalPixels)
     {
-        // Harmonic / octave check: if detectedW is an exact multiple (e.g. 2x) of a smaller divisor of totalPixels,
-        // test whether the smaller divisor also scores very low diff (fundamental period vs octave doubling).
+        // Harmonic / octave check, in both directions: the detected lag can be a multiple of the true
+        // width (octave doubling) or a sub-harmonic of it (a horizontally tiled sheet).
         int start = FindActiveRegionStart(data, totalPixels, FineSamplePixels);
         int nSample = Math.Min(totalPixels - start, 100_000);
 
@@ -312,8 +312,51 @@ public static class RasterDecoder
                 return subW;
         }
 
-        return detectedW;
+        // The mirror case. A sheet tiled across repeats at the frame pitch, so the sweep can settle on a
+        // sub-harmonic of the row: Runaway 2's RESOURCE.000 entry 158 is twenty-four 64-wide frames laid
+        // out twelve across, and lag 128 -- two frames along one scanline -- wins the coarse sweep over
+        // the real 768-pixel row. What marks the row out is not that it scores best among the multiples
+        // of the pitch but that it scores *sharply* better than the multiples either side of it, so each
+        // candidate is judged against its own neighbours. Only multiples that divide the pixel count are
+        // scored, which is a handful.
+        double scoreAtDetected = ScoreStride(data, start, nSample, detectedW);
+        double bestScore = double.MaxValue;
+        int bestW = detectedW;
+
+        for (int k = 2; (long)detectedW * (k + 1) <= WidthMax; k++)
+        {
+            int w = detectedW * k;
+            if (totalPixels % w != 0 || totalPixels / w < 4)
+                continue;
+
+            double score = ScoreStride(data, start, nSample, w);
+            double below = k == 2 ? scoreAtDetected : ScoreStride(data, start, nSample, w - detectedW);
+            double above = ScoreStride(data, start, nSample, w + detectedW);
+            if (below == double.MaxValue || above == double.MaxValue)
+                continue;
+
+            if (score <= Math.Min(below, above) * SubHarmonicDipMax && score < bestScore)
+            {
+                bestScore = score;
+                bestW = w;
+            }
+        }
+
+        return bestW;
     }
+
+    /// <summary>
+    /// How much better than the multiples either side of it a multiple of the detected width has to
+    /// agree vertically before it is taken as the row rather than the pitch of a sheet.
+    /// <para>
+    /// The dip at a real row is steep: Runaway 2's dial sheet scores 4.41 at its 768-pixel row against
+    /// 6.98 and 7.51 on either side, a ratio of 0.63. A width that is already the row has no dip at all,
+    /// because comparing rows two apart instead of one costs almost nothing -- across the eight scene
+    /// backgrounds in the games whose best multiple is a doubling, the shallowest ratio is 0.89. This
+    /// threshold sits between the two with room on both sides.
+    /// </para>
+    /// </summary>
+    private const double SubHarmonicDipMax = 0.8;
 
     internal static double ScoreStride(ReadOnlySpan<byte> data, int start, int length, int stride)
     {

@@ -1280,6 +1280,7 @@ public sealed class VirtualFileSystem
 
         var rasterSlots = new System.Collections.Concurrent.ConcurrentDictionary<int, (int Width, int Height)>();
         var spriteSlots = new System.Collections.Concurrent.ConcurrentDictionary<int, ImageInfo>();
+        var overlaySlots = new System.Collections.Concurrent.ConcurrentDictionary<int, OverlayInfo>();
 
         // Runaway 2 and 3 keep the same fonts with a wider offset in each glyph record; the rest of the
         // pairing rule is unchanged.
@@ -1288,6 +1289,7 @@ public sealed class VirtualFileSystem
         bool probeCursors = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2;
         bool probeBmp = gameVersion == GameVersion.Runaway3;
         bool probePairedSprites = gameVersion == GameVersion.Runaway2;
+        bool probeOverlays = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2 or GameVersion.Runaway3;
 
         // The RGB565 games' rasters are recognised by their exact size, and a size can lie: Runaway 2
         // stores one long data stream in consecutive slots of exactly one screen's worth of bytes
@@ -1299,7 +1301,7 @@ public sealed class VirtualFileSystem
         // self-contained rather than split over a pair of slots, and they walk byte-exact like any other.
         bool probeSprites = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2 or GameVersion.Runaway3;
 
-        if (probeFonts || probeCursors || probeBmp || probeRasters || probeSprites || probePairedSprites)
+        if (probeFonts || probeCursors || probeBmp || probeRasters || probeSprites || probePairedSprites || probeOverlays)
         {
             using FileStream f = File.OpenRead(path);
             Span<byte> pairHead = stackalloc byte[16];
@@ -1381,7 +1383,7 @@ public sealed class VirtualFileSystem
         // The sprite walk and the stride sweep both read and chew through the whole entry, and a global
         // archive runs to hundreds of megabytes, so they go wide -- one file handle per worker -- the way
         // the scene archives are classified.
-        if (probeSprites || probeRasters)
+        if (probeSprites || probeRasters || probeOverlays)
         {
             Parallel.ForEach(
                 entries.Where(e => !fontBitmapSlots.Contains(e.Index) && !fontTableSlots.Contains(e.Index)
@@ -1390,7 +1392,7 @@ public sealed class VirtualFileSystem
                 () => File.OpenRead(path),
                 (e, state, f) =>
                 {
-                    if (e.Size is < SpriteAsset.RecordSize or > int.MaxValue)
+                    if (e.Size is < 8 or > int.MaxValue)
                         return f;
 
                     // A head is enough to rule most entries out; only what survives is read in full.
@@ -1399,10 +1401,11 @@ public sealed class VirtualFileSystem
                     f.Position = e.Offset;
                     f.ReadExactly(head);
 
-                    bool couldBeSprite = probeSprites && SpriteAsset.CouldBeSprite(head, e.Size);
+                    bool couldBeSprite = probeSprites && e.Size >= SpriteAsset.RecordSize && SpriteAsset.CouldBeSprite(head, e.Size);
+                    bool couldBeOverlay = probeOverlays && OverlayDecoder.CouldBeOverlay(head, e.Size);
                     bool knownGeometry = probeRasters && TryGlobalRaster(gameVersion, e.Size, out _, out _);
                     bool couldBeRaster = probeRasters && (knownGeometry || RasterDecoder.LooksLikeArtwork(head));
-                    if (!couldBeSprite && !couldBeRaster)
+                    if (!couldBeSprite && !couldBeOverlay && !couldBeRaster)
                         return f;
 
                     byte[] data;
@@ -1428,6 +1431,13 @@ public sealed class VirtualFileSystem
                             Height = sprite.Bounds.Height,
                             Frames = sprite.FrameCount,
                         };
+                        return f;
+                    }
+
+                    // Overlay detection: row records consume the entry byte-exact.
+                    if (couldBeOverlay && OverlayDecoder.Parse(data) is { } overlay)
+                    {
+                        overlaySlots[e.Index] = overlay;
                         return f;
                     }
 
@@ -1547,6 +1557,21 @@ public sealed class VirtualFileSystem
                 string what = knownName ?? (sprite.Frames == 1
                     ? $"sprite {sprite.Width}×{sprite.Height}"
                     : $"animation, {sprite.Frames} frames, {sprite.Width}×{sprite.Height}");
+                label = $"e{e.Index:000}  {what}";
+            }
+            else if (overlaySlots.TryGetValue(e.Index, out OverlayInfo? overlay))
+            {
+                kind = EntryKind.Overlay;
+                image = new ImageInfo
+                {
+                    X = overlay.X,
+                    Y = overlay.Y,
+                    Width = overlay.Width,
+                    Height = overlay.Height,
+                };
+                string what = knownName ?? (overlay.HasAlpha
+                    ? $"overlay {overlay.Width}×{overlay.Height} (alpha)"
+                    : $"overlay {overlay.Width}×{overlay.Height}");
                 label = $"e{e.Index:000}  {what}";
             }
             else if (rasterSlots.TryGetValue(e.Index, out (int Width, int Height) raster))

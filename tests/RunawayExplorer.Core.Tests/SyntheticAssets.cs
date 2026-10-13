@@ -11,6 +11,11 @@ namespace RunawayExplorer.Core.Tests;
 /// </summary>
 public static class SyntheticAssets
 {
+    static SyntheticAssets()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
     public static ushort Rgb565(int r8, int g8, int b8) => (ushort)(((r8 >> 3) << 11) | ((g8 >> 2) << 5) | (b8 >> 3));
 
     public static ushort DefaultRasterPixel(int x, int y, int width, int height)
@@ -43,6 +48,27 @@ public static class SyntheticAssets
             BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)y); ms.Write(u16);
             BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)px.Length); ms.Write(u16);
             foreach (ushort p in px) { BinaryPrimitives.WriteUInt16LittleEndian(u16, p); ms.Write(u16); }
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>An extended overlay whose row records carry an alpha flag and optional alpha channel (Runaway 2).</summary>
+    public static byte[] AlphaOverlay(IReadOnlyList<(int X, int Y, byte Flag, (ushort Rgb, byte Alpha)[] Pixels)> rows)
+    {
+        using var ms = new MemoryStream();
+        Span<byte> u16 = stackalloc byte[2];
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)rows.Count); ms.Write(u16);
+        foreach ((int x, int y, byte flag, var px) in rows)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)x); ms.Write(u16);
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)y); ms.Write(u16);
+            ms.WriteByte(flag);
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)px.Length); ms.Write(u16);
+            foreach (var p in px)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, p.Rgb); ms.Write(u16);
+                if (flag == 1) ms.WriteByte(p.Alpha);
+            }
         }
         return ms.ToArray();
     }

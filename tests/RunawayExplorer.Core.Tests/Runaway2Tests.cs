@@ -691,6 +691,51 @@ public class Runaway2InterfaceTests
     }
 
     [Fact]
+    public void RealInstall_ASheetTiledAcrossIsNotMistakenForOneFrameColumn()
+    {
+        // e158 is a dial animation laid out twelve frames across and two down, 64x60 each. Frames along
+        // a row differ only slightly, so lag 128 -- two frames along one scanline -- used to beat the
+        // real 768-pixel row in the stride sweep and the sheet came out as 128x720, every frame smeared
+        // over six rows. The tiling is what proves the width: at 768 all 24 cells have black corners,
+        // and 23 of them share the dial's hub pixel (the 24th is blank padding).
+        // The shipped cache is bypassed deliberately: this tests the decoder on the real bytes, not
+        // whatever answer was baked into the cache the last time it was regenerated.
+        if (!Directory.Exists(R2SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral(includeShipped: false));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        FsNode node = global.Children.Single(c => c.EntryIndex == 158);
+        Assert.Equal(EntryKind.Background, node.Kind);
+        Assert.Equal((768, 120), (node.Image!.Width, node.Image.Height));
+
+        byte[] bytes = vfs.ReadBytes(node);
+        DecodedImage image = RasterDecoder.Decode(bytes, 768, 120);
+        int hubs = 0;
+        for (int row = 0; row < 2; row++)
+        {
+            for (int column = 0; column < 12; column++)
+            {
+                int x = column * 64, y = row * 60;
+                foreach ((int cx, int cy) in new[] { (x, y), (x + 63, y), (x, y + 59), (x + 63, y + 59) })
+                    Assert.Equal((0, 0, 0), Bgr(image, cx, cy));
+
+                if (Bgr(image, x + 32, y + 30) != (0, 0, 0))
+                    hubs++;
+            }
+        }
+
+        Assert.Equal(23, hubs);
+
+        static (byte B, byte G, byte R) Bgr(DecodedImage image, int x, int y)
+        {
+            int i = (y * image.Width + x) * 4;
+            return (image.Pixels[i], image.Pixels[i + 1], image.Pixels[i + 2]);
+        }
+    }
+
+    [Fact]
     public void RealInstall_GlobalArchiveHoldsSixCursorAtlasesAndNoRunaway1Fonts()
     {
         string path = Path.Combine(R2SteamDir, "Resource", "RESOURCE.000");
@@ -990,6 +1035,46 @@ public class Runaway2InterfaceTests
         byte[] restoredBytes = restoredMs.ToArray();
         string b26Magic = System.Text.Encoding.ASCII.GetString(restoredBytes, 0, 4);
         Assert.Equal("BIKi", b26Magic);
+    }
+
+    [Fact]
+    public void RealInstall_GlobalArchiveHoldsChapterPhotoOverlays()
+    {
+        const string r2SteamDir = @"F:\Games\Steam\steamapps\common\Runaway The Dream of the Turtle";
+        if (!Directory.Exists(r2SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(r2SteamDir, cache: ScanCache.Ephemeral(includeShipped: false));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        // Slots 95-102 are the 8 chapter selection / title logo overlays
+        var overlaySlots = new[] { 95, 96, 97, 98, 99, 100, 101, 102 };
+        foreach (int slot in overlaySlots)
+        {
+            FsNode node = global.Children.Single(c => c.EntryIndex == slot);
+            Assert.Equal(EntryKind.Overlay, node.Kind);
+            Assert.NotNull(node.Image);
+            Assert.True(node.Image.Width > 0 && node.Image.Height > 0);
+
+            byte[] bytes = vfs.ReadBytes(node);
+            var decoded = OverlayDecoder.TryDecode(bytes);
+            Assert.NotNull(decoded);
+            Assert.True(decoded.Value.Info.HasAlpha);
+            Assert.Equal(node.Image.Width, decoded.Value.Info.Width);
+            Assert.Equal(node.Image.Height, decoded.Value.Info.Height);
+        }
+
+        // Test e096 specifically: Chapter 2 (Brian with mechanical bull)
+        FsNode e096 = global.Children.Single(c => c.EntryIndex == 96);
+        Assert.Equal((335, 165), (e096.Image!.Width, e096.Image.Height));
+        Assert.Equal((598, 41), (e096.Image.X, e096.Image.Y));
+        Assert.Contains("Chapter 2: Surfin' Mala", e096.FriendlyName);
+
+        // Test e102: Game title logo
+        FsNode e102 = global.Children.Single(c => c.EntryIndex == 102);
+        Assert.Equal((227, 70), (e102.Image!.Width, e102.Image.Height));
+        Assert.Equal((409, 12), (e102.Image.X, e102.Image.Y));
+        Assert.Contains("title logo", e102.FriendlyName);
     }
 }
 

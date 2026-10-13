@@ -52,6 +52,27 @@ The true stride produces a sharp global minimum in the vertical difference metri
 1. **Coarse pass**: Checks candidate strides across three evenly distributed sample chunks.
 2. **Fine re-score**: Validates candidate strides against edge artifacts, ensuring exact division of the pixel buffer.
 
+##### Harmonics of the row
+
+The sweep measures agreement at a lag, and a picture agrees with itself at more lags than its row.
+`RasterDecoder.ResolveFundamentalWidth` arbitrates between them in both directions:
+
+- **Octave doubling.** A raster whose rows repeat in pairs scores as well at $2W$ or $3W$ as at $W$, so the
+  sweep can land on a multiple of the row. If a divisor $W/2$ or $W/3$ of the pixel count scores within
+  35% of the detected lag, the smaller one is the row.
+- **Sub-harmonics (tiled sheets).** A sheet of near-identical frames laid out horizontally also repeats at
+  the *frame pitch*, which is a shorter lag than the row and therefore wins the coarse pass outright.
+  *Runaway 2*'s `RESOURCE.000` entry 158 is twenty-four 64x60 dial frames tiled twelve across and two
+  down; lag 128 — two frames along one scanline — beat the real 768-pixel row, and the sheet decoded as
+  128x720 with every frame smeared over six rows.
+
+  What distinguishes the row from the pitch is not that it scores best among the multiples of the pitch but
+  that it is a *sharp local minimum*: it scores far better than the multiples immediately either side of it.
+  Entry 158 scores 4.41 at 768 against 6.98 and 7.51 at its neighbours, a ratio of 0.63. A width that is
+  already the row shows no such dip, because comparing rows two apart instead of one costs almost nothing —
+  across the eight scene backgrounds in the games whose best multiple is a mere doubling, the shallowest
+  ratio is 0.89. `SubHarmonicDipMax` is set at 0.8, between the two.
+
 Common scene dimensions across the games:
 - **Standard**: 1024×600 (*Runaway 1*), 1280×720 (*Runaway 3*), 1920×1080 (*TNBT*, *Yesterday*).
 - **Horizontal scrollers**: 1372×600, 1600×600, 2048×600, 2592×600, 3016×770.

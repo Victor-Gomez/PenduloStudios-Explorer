@@ -104,6 +104,19 @@ public class RasterDecoderTests
     }
 
     [Fact]
+    public void PrefersTheRowOverASubHarmonicWhenTheSheetTilesHorizontally()
+    {
+        // The mirror of the test above. A sheet of near-identical frames agrees with itself at the frame
+        // pitch as well as at the row, and the pitch is the shorter lag, so the sweep can settle on it --
+        // Runaway 2's RESOURCE.000 entry 158 is twenty-four 64-wide frames laid out twelve across, and
+        // lag 128 is two frames along one scanline. Here each frame along a row is one green step from
+        // its neighbour and each row is a quarter of a step from the one above, so 768 is the row.
+        byte[] data = Raster(768, 120, (x, y) => (ushort)(((y / 4) + (x / 128)) << 5));
+
+        Assert.Equal(768, RasterDecoder.ResolveFundamentalWidth(data, 128, 768 * 120));
+    }
+
+    [Fact]
     public void FullScreenMultiples_NeedNoDetection()
     {
         // A flat title card defeats the stride detector; its size is unambiguous anyway.
@@ -206,6 +219,31 @@ public class OverlayDecoderTests
     {
         byte[] data = [1, 0, 0, 0, 0, 0, 0, 0];
         Assert.Null(OverlayDecoder.Parse(data));
+    }
+
+    [Fact]
+    public void ParsesAlphaOverlays_AndDecodesPixelsWithAlpha()
+    {
+        ushort red = Rgb565(255, 0, 0), blue = Rgb565(0, 0, 255);
+        byte[] data = AlphaOverlay(
+        [
+            (200, 100, 0, [(red, 255), (red, 255)]), // flag 0: opaque RGB565
+            (201, 101, 1, [(blue, 128)]),            // flag 1: RGB565 + alpha 128
+        ]);
+
+        Assert.True(OverlayDecoder.CouldBeOverlay(data, data.Length));
+        (DecodedImage image, OverlayInfo info) = OverlayDecoder.TryDecode(data)!.Value;
+
+        Assert.Equal(200, info.X);
+        Assert.Equal(100, info.Y);
+        Assert.Equal(2, info.Width);
+        Assert.Equal(2, info.Height);
+        Assert.True(info.HasAlpha);
+        Assert.False(info.IsRectangular);
+
+        Assert.Equal((0xF8, 0, 0, 255), Pixel(image, 0, 0));
+        Assert.Equal((0, 0, 0xF8, 128), Pixel(image, 1, 1));
+        Assert.Equal(0, Pixel(image, 0, 1).A); // transparent
     }
 }
 
