@@ -29,18 +29,23 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
 - **Backgrounds, scene masks and overlays.** Displays full-screen scene backgrounds, positioned overlays
   (props, foreground layers, title cards, UI), and scene interaction masks (walkboxes, hotspots, depth planes).
   Overlays and scene masks can be drawn directly on their scene's background at authored coordinates, with
-  layer filtering and adjustable opacity.
+  layer filtering and adjustable opacity. *Runaway 1* savegames (`SAVEGAME/`) can be browsed and inspected,
+  displaying their 204×120 RGB565 thumbnail, slot name, action verb, scene ID, actor coordinates, and inventory items.
 - **Sprite animations.** Frame-by-frame playback with scrubbing, stepping, looping, and adjustable
   frame rate, either on the animation's own bounding box or composited over the scene background at
   authored coordinates. *Runaway 1*'s characters live in a library of their own, in a different codec
   entirely — palette-indexed run streams with a separate coverage mask for the anti-aliased rim and the
-  ground shadow — and play in the same viewer.
+  ground shadow — and play in the same viewer. The player character is not in that library: his six
+  costumes, each of eight walk cycles and six talking heads, are laid out across `RESOURCE.000` and are
+  decoded too.
 - **Sound & Video.** Background music, ambient sound effects, cinematic audio, voice acting clips,
-  and Bink cutscenes with restored headers played via LibVLC with dedicated volume controls and
+  Bink cutscenes with restored headers, and *Hollywood Monsters*' Smacker (`.smk`) videos played via LibVLC with dedicated volume controls and
   interactive waveform seeking.
-- **Dialogue & script.** Browse the games' written text: *Runaway 2* and *3* by phrase, and *Hollywood
+- **Dialogue & script.** Browse the games' written text: *Runaway 2* and *3* by phrase, *Hollywood
   Monsters* scene by scene, deciphered from its obfuscated script and shown as that scene's hotspot labels
-  and spoken lines, each pointing at the voice clip that records it where the script names one.
+  and spoken lines, each pointing at the voice clip that records it where the script names one, and *Runaway 3*'s
+  `RESOURCE.005` chapter interaction database (2,173 records across 7 chapters, deciphered Spanish object names,
+  adventure verbs, and visual Mermaid interaction graphs per chapter and scene).
 - **Export & Clipboard.** Single entries or whole folders: PNG for images and scene masks, **animated PNG** or
   numbered **image sequence** (with per-frame screen coordinates) for animations, WAV for audio,
   restored `.bik` for video, text for lip-sync tracks, and raw bytes for data tables. Copy images and
@@ -72,9 +77,9 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
 
 - `src/RunawayExplorer.Core/` -- archive readers, image decoders, PNG/APNG/WAV writers and the virtual
   file system. Engine-agnostic: no UI framework, no native dependencies.
-  - `FileSystem/` -- the scene, audio, global, viseme and voice archive readers; the video keyfile;
+  - `FileSystem/` -- the scene, audio, global, viseme, voice, chapter interaction, and savegame archive readers; the video keyfile;
     `VirtualFileSystem` (the categorised tree) and `ScanCache`.
-  - `Formats/` -- `RasterDecoder`, `JpegDecoder`, `PngDecoder`, `OverlayDecoder`, `SpriteDecoder`, `RleMaskDecoder`, `PngWriter`, `ApngWriter`, `WavWriter`.
+  - `Formats/` -- `RasterDecoder`, `JpegDecoder`, `PngDecoder`, `OverlayDecoder`, `SpriteDecoder`, `CharacterSpriteDecoder`, `RleMaskDecoder`, `RouteDecoder`, `SceneTable`, `CorridorSpanDecoder`, `SmackerVideo`, `PngWriter`, `ApngWriter`, `WavWriter`.
   - `Metadata/` -- `SceneCatalog` (official chapter names, scene titles and bilingual descriptions).
   - `Settings/` -- persisted user preferences.
 - `src/RunawayExplorer/` -- Avalonia UI.
@@ -86,10 +91,10 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
 
 ## What is not decoded
 
-- The 704-byte per-scene table in *Runaway*'s scene archives -- purpose unknown. Its two larger siblings
-  are understood: 1536 bytes is the six-page zone attribute table and 43659 the walk route table.
-  *Hollywood Monsters*' equivalents are understood too: its playable scenes open with a fixed background,
-  palette, region map, lookup pages and metadata block.
+- The scene tables in *Runaway* are all understood: 1536 bytes is the six-page zone attribute table,
+  43659 bytes (R1) and 335529 bytes (R2) are precomputed waypoint walk matrices, and 704 bytes is
+  the 117-span walkway perspective corridor table. *Hollywood Monsters*' equivalents are understood
+  too: its playable scenes open with a fixed background, palette, region map, lookup pages and metadata block.
 - The localised text bitmaps in `RESOURCE.000`, shown as hex dumps, and the second character sprite
   library in that same file, whose per-animation data bases have not been found
   ([global-data.md](docs/formats/global-data.md)). Interface art itself decodes in every game -- the fonts, cursor atlases,
