@@ -414,10 +414,17 @@ public static class SceneCatalog
     public static ChapterInfo? GetChapter(int chapterNumber, GameVersion game = GameVersion.Runaway1) =>
         ChaptersPerGame[Math.Clamp((int)game, 0, 2)].GetValueOrDefault(chapterNumber);
 
+    internal static string GetArchiveBaseName(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        int lastSep = Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
+        return lastSep >= 0 ? path[(lastSep + 1)..] : path;
+    }
+
     /// <summary>Returns friendly scene title with readable name first and internal name after (e.g. "Ch. 1 (\"Wake Up, Brian!\"): Hospital: Gina's Room (RESOURCE.A01)").</summary>
     public static string GetSceneTitle(string archiveName, string? language = null, GameVersion game = GameVersion.Runaway1)
     {
-        string baseName = Path.GetFileName(archiveName);
+        string baseName = GetArchiveBaseName(archiveName);
         bool es = IsSpanish(language);
         int gameIdx = Math.Clamp((int)game, 0, 2);
         var scenes = ScenesPerGame[gameIdx];
@@ -440,7 +447,7 @@ public static class SceneCatalog
     /// <summary>Returns friendly title for an audio archive with readable name first (e.g. "Main Theme & Title (RESOURCE.M01)").</summary>
     public static string GetAudioTitle(string archiveName, string? language = null, GameVersion game = GameVersion.Runaway1)
     {
-        string baseName = Path.GetFileName(archiveName);
+        string baseName = GetArchiveBaseName(archiveName);
         bool es = IsSpanish(language);
         var audio = AudioPerGame[Math.Clamp((int)game, 0, 2)];
 
@@ -495,7 +502,7 @@ public static class SceneCatalog
     /// <summary>Returns friendly name for a global archive (e.g. "User Interface & HUD (RESOURCE.IFZ)").</summary>
     public static string GetGlobalTitle(string archiveName, string? language = null, GameVersion game = GameVersion.Runaway1)
     {
-        string baseName = Path.GetFileName(archiveName);
+        string baseName = GetArchiveBaseName(archiveName);
         bool es = IsSpanish(language);
 
         if (GlobalArchiveTitles.TryGetValue(baseName, out var pair))
@@ -933,7 +940,7 @@ public static class SceneCatalog
     /// <summary>Returns friendly name for an identified scene archive asset if known.</summary>
     public static string? GetKnownSceneAssetName(string archiveName, int index, string? language = null)
     {
-        string baseName = Path.GetFileName(archiveName);
+        string baseName = GetArchiveBaseName(archiveName);
         bool es = IsSpanish(language);
         if (KnownSceneAssetNames.TryGetValue((baseName, index), out var pair))
             return es ? pair.Es : pair.En;
@@ -976,7 +983,7 @@ public static class SceneCatalog
         {
             case EntryKind.Background when img is not null:
             {
-                if (entry.ArchivePath is not null && Path.GetFileName(entry.ArchivePath).Equals("RESOURCE.A03", StringComparison.OrdinalIgnoreCase) && img.Width == 204 && img.Height == 120)
+                if (entry.ArchivePath is not null && GetArchiveBaseName(entry.ArchivePath).Equals("RESOURCE.A03", StringComparison.OrdinalIgnoreCase) && img.Width == 204 && img.Height == 120)
                 {
                     string chLabel = entry.EntryIndex switch
                     {
@@ -985,7 +992,7 @@ public static class SceneCatalog
                     };
                     return $"{chLabel} {img.Width}×{img.Height} ({entry.Name})";
                 }
-                if (entry.ArchivePath is not null && Path.GetFileName(entry.ArchivePath).Equals("RESOURCE.I04", StringComparison.OrdinalIgnoreCase) && img.Width == 200 && img.Height == 93)
+                if (entry.ArchivePath is not null && GetArchiveBaseName(entry.ArchivePath).Equals("RESOURCE.I04", StringComparison.OrdinalIgnoreCase) && img.Width == 200 && img.Height == 93)
                 {
                     string tileLabel = es ? $"miniatura de destino {entry.EntryIndex - 1}" : $"travel destination tile {entry.EntryIndex - 1}";
                     return $"{tileLabel} {img.Width}×{img.Height} ({entry.Name})";
