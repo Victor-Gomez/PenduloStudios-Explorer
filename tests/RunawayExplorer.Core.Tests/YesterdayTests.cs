@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using RunawayExplorer.Core.FileSystem;
 using RunawayExplorer.Core.Formats;
 using RunawayExplorer.Core.Metadata;
@@ -62,6 +63,7 @@ public class YesterdayTests
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.DIS", GameVersion.Yesterday));
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.TAB", GameVersion.Yesterday));
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.CRD", GameVersion.Yesterday));
+        Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.B31", GameVersion.Yesterday));
     }
 
     [Fact]
@@ -349,4 +351,293 @@ public class YesterdayInterfaceTests
         ShippedCacheBuilder.AddInstall(YesterdayTests.YesterdaySteamDir);
         Assert.Equal(0, ShippedCacheBuilder.AddInstall(YesterdayTests.YesterdaySteamDir));
     }
+
+    [Fact]
+    public void RealInstall_Yesterday_LocalVideosAndPauseScreens()
+    {
+        if (!Directory.Exists(YesterdayTests.YesterdaySteamDir)) return;
+
+        // Bink videos in uk folder
+        string crd = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "uk", "RESOURCE.CRD");
+        string b31 = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "uk", "RESOURCE.B31");
+        if (File.Exists(crd))
+        {
+            using var fs = File.OpenRead(crd);
+            byte[] magic = new byte[4];
+            fs.ReadExactly(magic);
+            Assert.Equal("BIKi"u8.ToArray(), magic);
+        }
+        if (File.Exists(b31))
+        {
+            using var fs = File.OpenRead(b31);
+            byte[] magic = new byte[4];
+            fs.ReadExactly(magic);
+            Assert.Equal("BIKi"u8.ToArray(), magic);
+        }
+
+        // RESOURCE.PSE: container of 5 PNG pause screens
+        string pse = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "uk", "RESOURCE.PSE");
+        if (File.Exists(pse))
+        {
+            using var fs = File.OpenRead(pse);
+            var entries = SceneArchive.ReadEntries(fs);
+            Assert.Equal(5, entries.Count);
+            foreach (var e in entries)
+            {
+                byte[] head = new byte[8];
+                fs.Seek(e.Offset, SeekOrigin.Begin);
+                fs.ReadExactly(head);
+                Assert.True(PngDecoder.IsPng(head));
+            }
+        }
+    }
+
+    [Fact]
+    public void SyntheticYesterdayFont_DecodesRgb24Correctly()
+    {
+        // 1 glyph of 4x4
+        var glyphs = new[] { new FontDecoder.Glyph(0, 2, 4, 4) };
+        var rgbData = new byte[4 * 4 * 3];
+
+        // Pixel 0,0: transparent (0, 0, 0)
+        // Pixel 1,1: pure outline (255, 0, 255)
+        int p11 = (1 * 4 + 1) * 3;
+        rgbData[p11] = 255;
+        rgbData[p11 + 1] = 0;
+        rgbData[p11 + 2] = 255;
+
+        // Pixel 2,2: pure fill (0, 255, 0)
+        int p22 = (2 * 4 + 2) * 3;
+        rgbData[p22] = 0;
+        rgbData[p22 + 1] = 255;
+        rgbData[p22 + 2] = 0;
+
+        DecodedImage img = FontDecoder.DecodeRgb24(rgbData, glyphs, maxWidth: 100);
+        Assert.NotNull(img);
+        Assert.True(img.Width >= 4);
+        Assert.True(img.Height >= 6); // Top 2 + Height 4
+
+        // Transparent pixel
+        int di00 = 0;
+        Assert.Equal(0, img.Pixels[di00 + 3]); // Alpha
+
+        // Outline pixel: dy = 1 + 2 = 3, dx = 1
+        int di11 = (3 * img.Width + 1) * 4;
+        Assert.Equal(255, img.Pixels[di11 + 3]); // Full alpha
+        Assert.Equal(0, img.Pixels[di11]);       // Black outline (B=0)
+
+        // Fill pixel: dy = 2 + 2 = 4, dx = 2
+        int di22 = (4 * img.Width + 2) * 4;
+        Assert.Equal(255, img.Pixels[di22 + 3]); // Full alpha
+        Assert.Equal(255, img.Pixels[di22]);     // White body (B=255)
+    }
+
+    [Fact]
+    public void SyntheticCutsceneSubtitles_ParsesCues()
+    {
+        string raw = """
+            //[angustiado] ¡PUES SIGAN BUSCANDO!
+            X
+            1224
+            Y
+            880
+            B
+            110
+            E
+            150
+
+            //LO PROTEGERÉ DE CUALQUIERA
+            X
+            784
+            Y
+            664
+            B
+            172
+            E
+            244
+            """;
+
+        List<SubtitleCue> cues = CutsceneSubtitles.Parse(raw);
+        Assert.Equal(2, cues.Count);
+        Assert.Equal("[angustiado] ¡PUES SIGAN BUSCANDO!", cues[0].Text);
+        Assert.Equal(1224, cues[0].X);
+        Assert.Equal(880, cues[0].Y);
+        Assert.Equal(110, cues[0].BeginFrame);
+        Assert.Equal(150, cues[0].EndFrame);
+
+        Assert.Equal("LO PROTEGERÉ DE CUALQUIERA", cues[1].Text);
+        Assert.Equal(172, cues[1].BeginFrame);
+        Assert.Equal(244, cues[1].EndFrame);
+
+        string summary = CutsceneSubtitles.ToSummary(cues);
+        Assert.Contains("[110 - 150] [angustiado] ¡PUES SIGAN BUSCANDO!", summary);
+        Assert.Contains("[172 - 244] LO PROTEGERÉ DE CUALQUIERA", summary);
+    }
+
+    [Fact]
+    public void RealInstall_Yesterday_FontArchiveAndCutscenes()
+    {
+        if (!Directory.Exists(YesterdayTests.YesterdaySteamDir)) return;
+
+        string fntPath = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "uk", "RESOURCE.FNT");
+        if (File.Exists(fntPath))
+        {
+            byte[] fntBytes = File.ReadAllBytes(fntPath);
+            Assert.True(YesterdayFontArchive.IsFontArchive(fntBytes));
+
+            List<YesterdayFont> fonts = YesterdayFontArchive.ReadFonts(fntBytes);
+            Assert.Equal(2, fonts.Count);
+
+            Assert.Equal(196, fonts[0].Glyphs.Length);
+            DecodedImage img0 = FontDecoder.DecodeRgb24(fonts[0].BitmapRgb, fonts[0].Glyphs);
+            Assert.True(img0.Width > 0 && img0.Height > 0);
+
+            Assert.Equal(191, fonts[1].Glyphs.Length);
+            DecodedImage img1 = FontDecoder.DecodeRgb24(fonts[1].BitmapRgb, fonts[1].Glyphs);
+            Assert.True(img1.Width > 0 && img1.Height > 0);
+        }
+
+        string subPath = Path.Combine(YesterdayTests.YesterdaySteamDir, "Datav", "VC10.001");
+        if (File.Exists(subPath))
+        {
+            string content = File.ReadAllText(subPath, System.Text.Encoding.Latin1);
+            List<SubtitleCue> cues = CutsceneSubtitles.Parse(content);
+            Assert.Equal(4, cues.Count);
+            Assert.Equal(110, cues[0].BeginFrame);
+            Assert.Contains("PUES SIGAN BUSCANDO", cues[0].Text);
+        }
+
+        // Test VFS integration
+        var vfs = VirtualFileSystem.Init(YesterdayTests.YesterdaySteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.GlobalFolder);
+        FsNode? fntNode = global.Children.FirstOrDefault(c => c.Name == "RESOURCE.FNT");
+        Assert.NotNull(fntNode);
+        Assert.Equal(2, fntNode.Children.Count);
+        Assert.All(fntNode.Children, c => Assert.Equal(EntryKind.Font, c.Kind));
+
+        FsNode videoFolder = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.VideoFolder);
+        FsNode? vc10Node = videoFolder.Children.FirstOrDefault(c => c.Name == "VC10.000");
+        Assert.NotNull(vc10Node);
+        Assert.NotNull(vc10Node.Subtitle);
+        Assert.Contains("PUES SIGAN BUSCANDO", vc10Node.Subtitle);
+    }
+
+    [Fact]
+    public void RealInstall_Yesterday_ResourceX03()
+    {
+        string path = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "RESOURCE.X03");
+        if (!File.Exists(path)) return;
+
+        byte[] bytes = File.ReadAllBytes(path);
+        List<ArchiveEntry> entries = SceneArchive.ReadEntries(bytes, bytes.Length);
+        Assert.Equal(8, entries.Count);
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            ArchiveEntry e = entries[i];
+            byte[] entryData = bytes.AsSpan((int)e.Offset, (int)e.Size).ToArray();
+            Assert.True(PngDecoder.IsPng(entryData), $"Entry {i} is not PNG");
+            Assert.True(PngDecoder.TryGetDimensions(entryData, out int w, out int h));
+            Assert.Equal(1920, w);
+            Assert.Equal(1080, h);
+            byte colorType = entryData[25];
+            var c = EntryClassifier.Classify(entryData, null, null, GameVersion.Yesterday);
+            Assert.True(c.Kind is EntryKind.Background or EntryKind.Overlay, $"Entry {i} kind is {c.Kind}");
+        }
+
+        var vfs = VirtualFileSystem.Init(YesterdayTests.YesterdaySteamDir, cache: ScanCache.Ephemeral());
+        FsNode scenes = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.ScenesFolder);
+        FsNode? x03 = scenes.Children.FirstOrDefault(c => c.Name == "RESOURCE.X03");
+        Assert.NotNull(x03);
+        Assert.Equal(8, x03.Children.Count);
+        Assert.All(x03.Children, c => Assert.True(c.Kind is EntryKind.Background or EntryKind.Overlay));
+    }
+
+    [Fact]
+    public void SyntheticYesterday_ResourceX03_ExtractsAndDecodesAllPngs()
+    {
+        byte[] fakePng = PngWriter.ToBytes(DecodedImage.Transparent(1920, 1080));
+        byte[] archive = SyntheticArchives.Scene([fakePng, fakePng, fakePng]);
+        List<ArchiveEntry> entries = SceneArchive.ReadEntries(archive, archive.Length);
+        Assert.Equal(3, entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            byte[] entryData = archive.AsSpan((int)entries[i].Offset, (int)entries[i].Size).ToArray();
+            Assert.True(PngDecoder.IsPng(entryData));
+            Assert.True(PngDecoder.TryGetDimensions(entryData, out int w, out int h));
+            Assert.Equal(1920, w);
+            Assert.Equal(1080, h);
+        }
+    }
+
+    [Fact]
+    public void RealInstall_Yesterday_ResourceX69_CutsceneArchive()
+    {
+        string path = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "RESOURCE.X69");
+        if (!File.Exists(path)) return;
+
+        byte[] bytes = File.ReadAllBytes(path);
+        List<ArchiveEntry> entries = SceneArchive.ReadEntries(bytes, bytes.Length);
+        Assert.Equal(9, entries.Count);
+
+        // Entries 2..8 are 25-frame cutscene animation payloads (1,172,852 bytes each)
+        for (int i = 2; i <= 8; i++)
+        {
+            ArchiveEntry e = entries[i];
+            Assert.Equal(1_172_852, e.Size);
+            byte[] entryData = bytes.AsSpan((int)e.Offset, (int)e.Size).ToArray();
+            ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(entryData);
+            Assert.Equal(25, fc);
+            uint fo0 = BinaryPrimitives.ReadUInt32LittleEndian(entryData.AsSpan(2));
+            Assert.Equal(352u, fo0); // 2 + 25 * 14 = 352
+        }
+
+        var vfs = VirtualFileSystem.Init(YesterdayTests.YesterdaySteamDir, cache: ScanCache.Ephemeral());
+        FsNode scenes = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.ScenesFolder);
+        FsNode? x69 = scenes.Children.FirstOrDefault(c => c.Name == "RESOURCE.X69");
+        Assert.NotNull(x69);
+        Assert.Equal(9, x69.Children.Count);
+    }
+
+    [Fact]
+    public void RealInstall_Yesterday_ResourceIfz()
+    {
+        string path = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "RESOURCE.IFZ");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(fs);
+        Assert.NotEmpty(entries);
+        Assert.Equal(69, entries.Count);
+
+        var vfs = VirtualFileSystem.Init(YesterdayTests.YesterdaySteamDir, cache: ScanCache.Ephemeral());
+        FsNode global = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.GlobalFolder);
+        FsNode? ifz = global.Children.FirstOrDefault(c => c.Name == "RESOURCE.IFZ");
+        Assert.NotNull(ifz);
+        Assert.Equal("User Interface & HUD (RESOURCE.IFZ)", ifz.FriendlyName);
+        Assert.Equal(69, ifz.Children.Count);
+
+        var backgrounds = ifz.Children.Where(c => c.Kind == EntryKind.Background).ToList();
+        Assert.NotEmpty(backgrounds);
+        Assert.All(backgrounds, b => Assert.True(b.Image?.Width > 0 && b.Image?.Height > 0));
+
+        vfs.ApplyLanguage("es");
+        Assert.Equal("Interfaz de usuario y menús (RESOURCE.IFZ)", ifz.FriendlyName);
+    }
+
+    [Fact]
+    public void SyntheticYesterday_ResourceIfz_DecodesPngAndAliases()
+    {
+        byte[] fakePng1 = PngWriter.ToBytes(DecodedImage.Transparent(100, 50));
+        byte[] fakePng2 = PngWriter.ToBytes(DecodedImage.Transparent(64, 64));
+        byte[] archive = SyntheticArchives.Interface([fakePng1, fakePng1, null, fakePng2]);
+
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(archive, archive.Length);
+        Assert.Equal(4, entries.Count);
+        Assert.Equal(fakePng1.Length, entries[0].Size);
+        Assert.Equal(fakePng1.Length, entries[1].Size);
+        Assert.Equal(fakePng1.Length, entries[2].Size);
+        Assert.Equal(fakePng2.Length, entries[3].Size);
+    }
 }
+

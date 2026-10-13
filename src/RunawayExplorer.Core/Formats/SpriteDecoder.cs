@@ -587,7 +587,8 @@ public sealed class SpriteAsset : IAnimationAsset
                 if (!TryReadSegmentHeader(_data, p, Format, out SpriteSegmentHeader h))
                     return $"frame {f}: segment {s} invalid or past end of asset";
 
-                if (h.X < rec.X0 || h.X + h.Count > rec.X0 + rec.W || h.Y < rec.Y0 || h.Y > rec.Y1)
+                if (Format is SpriteFormat.Runaway1 or SpriteFormat.HollywoodMonsters
+                    && (h.X < rec.X0 || h.X + h.Count > rec.X0 + rec.W || h.Y < rec.Y0 || h.Y > rec.Y1))
                     return $"frame {f}: segment {s} at ({h.X},{h.Y})+{h.Count} outside the frame's box";
 
                 p += h.HeaderBytes + h.PixelBytes;

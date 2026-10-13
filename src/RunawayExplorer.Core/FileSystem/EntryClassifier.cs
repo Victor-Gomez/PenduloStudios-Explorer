@@ -114,7 +114,7 @@ public static class EntryClassifier
             });
         }
 
-        if (gameVersion is not (GameVersion.TheNextBigThing or GameVersion.Yesterday) && RasterDecoder.Detect(data) is { } raster)
+        if (gameVersion is not (GameVersion.TheNextBigThing or GameVersion.Yesterday) && RasterDecoder.Detect(data, gameVersion) is { } raster)
         {
             return new EntryClassification(EntryKind.Background, new ImageInfo
             {
@@ -171,6 +171,16 @@ public static class EntryClassifier
                 Width = raster.Width,
                 Height = raster.Height,
                 Sharpness = raster.Sharpness,
+            });
+        }
+
+        if (data.Length == HollywoodItemIconsAsset.TotalBytes)
+        {
+            return new EntryClassification(EntryKind.Animation, new ImageInfo
+            {
+                Width = HollywoodItemIconsAsset.IconSize,
+                Height = HollywoodItemIconsAsset.IconSize,
+                Frames = HollywoodItemIconsAsset.IconCount,
             });
         }
 

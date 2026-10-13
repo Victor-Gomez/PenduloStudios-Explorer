@@ -219,6 +219,84 @@ public static class SyntheticArchives
         return data;
     }
 
+    /// <summary>
+    /// Builds a synthetic Runaway 1 script file (RESOURCE.003) with continuation counts and 0xFFFF row terminators.
+    /// </summary>
+    public static byte[] R1Script(
+        IReadOnlyDictionary<int, (string[] Labels, (string Text, int VoiceClip)[] Lines)> stages,
+        int continuationSpan = 1)
+    {
+        var key = new byte[HollywoodScript.KeySize];
+        for (int i = 0; i < key.Length; i++)
+            key[i] = (byte)(i * 7 + 13);
+
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding cp850 = Encoding.GetEncoding(850);
+
+        byte[] Row(string text, int size)
+        {
+            var row = new byte[size];
+            byte[] bytes = cp850.GetBytes(text);
+            bytes.AsSpan(0, Math.Min(bytes.Length, size - 1)).CopyTo(row);
+            for (int c = 0; c < size; c++)
+                row[c] = (byte)(row[c] + key[c]);
+            return row;
+        }
+
+        using var ms = new MemoryStream();
+        ms.Write(key);
+        long tableAt = ms.Position;
+        ms.Write(new byte[HollywoodScript.StageOffsetCount * 4]);
+
+        var offsets = new Dictionary<int, uint>();
+        foreach ((int index, (string[] labels, (string Text, int VoiceClip)[] lines)) in stages.OrderBy(s => s.Key))
+        {
+            offsets[index] = (uint)ms.Position;
+
+            var cues = new byte[HollywoodScript.DescriptorTableSize];
+            int lineIdx = 0;
+            int col = 0;
+            int row = 0;
+
+            while (lineIdx < lines.Length)
+            {
+                int span = Math.Min(continuationSpan, lines.Length - lineIdx);
+                int at = (row * 100 + col) * HollywoodScript.CueRecordSize;
+                if (at + HollywoodScript.CueRecordSize * 2 > cues.Length)
+                    break;
+
+                BinaryPrimitives.WriteUInt16LittleEndian(cues.AsSpan(at), (ushort)(HollywoodScript.LargeRowBaseId + lineIdx));
+                cues[at + 2] = (byte)span;
+                BinaryPrimitives.WriteUInt16LittleEndian(cues.AsSpan(at + 3), (ushort)lines[lineIdx].VoiceClip);
+
+                lineIdx += span;
+                col++;
+                if (col >= 10 || lineIdx >= lines.Length)
+                {
+                    int termAt = (row * 100 + col) * HollywoodScript.CueRecordSize;
+                    BinaryPrimitives.WriteUInt16LittleEndian(cues.AsSpan(termAt), 0xFFFF);
+                    row++;
+                    col = 0;
+                }
+            }
+
+            ms.Write(cues);
+            ms.WriteByte((byte)labels.Length);
+            var u16 = new byte[2];
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)lines.Length);
+            ms.Write(u16);
+            foreach (string label in labels)
+                ms.Write(Row(label, HollywoodScript.SmallRowSize));
+            foreach ((string text, _) in lines)
+                ms.Write(Row(text, HollywoodScript.LargeRowSize));
+        }
+
+        byte[] data = ms.ToArray();
+        foreach ((int index, uint offset) in offsets)
+            BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan((int)tableAt + index * 4), offset);
+        return data;
+    }
+
     /// <summary>The one tableless Hollywood Monsters scene archive: a bare screen followed by its palette.</summary>
     public static byte[] HmHeadlessScreen(byte[] screen, byte[] palette)
     {
@@ -238,6 +316,23 @@ public static class SyntheticArchives
             if (tracks[i] is null) continue;
             BinaryPrimitives.WriteUInt32LittleEndian(table.AsSpan(i * 6), cursor);
             BinaryPrimitives.WriteUInt16LittleEndian(table.AsSpan(i * 6 + 4), (ushort)tracks[i]!.Length);
+            cursor += (uint)tracks[i]!.Length;
+        }
+        ms.Write(table);
+        foreach (byte[]? t in tracks) if (t is not null) ms.Write(t);
+        return ms.ToArray();
+    }
+
+    public static byte[] VisemesR3(IReadOnlyList<byte[]?> tracks)
+    {
+        using var ms = new MemoryStream();
+        var table = new byte[VisemeArchive.TableSizeR3];
+        uint cursor = (uint)VisemeArchive.TableSizeR3;
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            if (tracks[i] is null) continue;
+            BinaryPrimitives.WriteUInt32LittleEndian(table.AsSpan(i * 8), cursor);
+            BinaryPrimitives.WriteUInt32LittleEndian(table.AsSpan(i * 8 + 4), (uint)tracks[i]!.Length);
             cursor += (uint)tracks[i]!.Length;
         }
         ms.Write(table);
@@ -532,15 +627,33 @@ public class VoiceArchiveTests
         Assert.Equal(5591, clips.Count);
         Assert.Equal(Enumerable.Range(1, 5591), clips.Keys);
 
-        // Every shard is tiled from the end of its table to its last byte, with no gap and no overlap.
+        // Every shard is tiled from the end of its table to its last byte with no overlap. The only gaps
+        // are the second copies of the 869 lines stored in two shards: each starts at a value of the
+        // shard's own table that the clip's owner elsewhere beat.
         foreach (IGrouping<string, VoiceArchive.VoiceClip> shard in clips.Values.GroupBy(c => c.ShardPath))
         {
+            var table = new byte[VoiceArchive.TableSize];
+            using (FileStream f = File.OpenRead(shard.Key))
+                f.ReadExactly(table);
+            var listed = new HashSet<long>();
+            for (int k = 0; k < VoiceArchive.SlotCount; k++)
+                listed.Add(BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(k * 4)));
+
             List<VoiceArchive.VoiceClip> ordered = shard.OrderBy(c => c.Offset).ToList();
             Assert.Equal(VoiceArchive.TableSize, ordered[0].Offset);
             for (int i = 1; i < ordered.Count; i++)
-                Assert.Equal(ordered[i - 1].Offset + ordered[i - 1].Size, ordered[i].Offset);
-            Assert.Equal(new FileInfo(shard.Key).Length, ordered[^1].Offset + ordered[^1].Size);
+            {
+                long end = ordered[i - 1].Offset + ordered[i - 1].Size;
+                Assert.True(end <= ordered[i].Offset);
+                if (end < ordered[i].Offset)
+                    Assert.Contains(end, listed);
+            }
+            Assert.True(ordered[^1].Offset + ordered[^1].Size <= new FileInfo(shard.Key).Length);
         }
+
+        // Clip 2535 ("Busca un buen arqueologo", F09) is followed in shard 4 by copies of lines held in
+        // shard 6; running to the next clip shard 4 owns made it 5.4 MB, six minutes of audio.
+        Assert.True(clips[2535].Size < 100_000);
 
         // All seven hold clips, and the big shards hold the most: reading the first shard whose value
         // merely fits would have answered 385 of these from the wrong one.
@@ -655,5 +768,35 @@ public class ArchiveWindowStreamTests
     {
         var inner = new MemoryStream(new byte[10]);
         Assert.Throws<ArgumentOutOfRangeException>(() => new ArchiveWindowStream(inner, 8, 5));
+    }
+}
+
+public class GameDetectorTests
+{
+    [Fact]
+    public void DetectsGamesBySignatureFiles()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            // Empty dir has no game
+            Assert.Null(GameDetector.TryDetect(tempDir));
+
+            // Create Hollywood Monsters signature
+            Directory.CreateDirectory(Path.Combine(tempDir, "Monsters"));
+            File.WriteAllBytes(Path.Combine(tempDir, "Monsters", "Monsters.exe"), [1, 2, 3]);
+            Assert.Equal(GameVersion.HollywoodMonsters, GameDetector.TryDetect(tempDir));
+
+            // Yesterday signature
+            string yDir = Path.Combine(tempDir, "Yesterday");
+            Directory.CreateDirectory(yDir);
+            File.WriteAllBytes(Path.Combine(yDir, "Yesterday.exe"), [1, 2, 3]);
+            Assert.Equal(GameVersion.Yesterday, GameDetector.TryDetect(yDir));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 }

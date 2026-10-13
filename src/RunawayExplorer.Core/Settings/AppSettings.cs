@@ -209,6 +209,9 @@ public sealed class AppSettings
                                 settings.Runaway1Dir = candidate;
                         }
                     }
+
+                    // Also auto-detect from local Steam/GOG installations
+                    settings.AutoDetectInstalledGames();
                 }
                 return settings;
             }
@@ -218,6 +221,26 @@ public sealed class AppSettings
         {
             return new AppSettings();
         }
+    }
+
+    /// <summary>
+    /// Scans for installed games across system library locations and sets any unconfigured game paths.
+    /// Returns true if any new game path was detected and set.
+    /// </summary>
+    public int AutoDetectInstalledGames()
+    {
+        var found = GameDetector.FindInstalledGames();
+        int added = 0;
+        foreach (var (version, path) in found)
+        {
+            if (string.IsNullOrWhiteSpace(GetGameDir(version)))
+            {
+                SetGameDir(version, path);
+                RegisterRecentInstall(path);
+                added++;
+            }
+        }
+        return added;
     }
 
     public void Save()

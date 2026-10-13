@@ -728,9 +728,9 @@ public class Runaway2InterfaceTests
     [Fact]
     public void RealInstall_GlobalAnimationsAreFoundAndWalkByteExact()
     {
-        // Slots 87-94, 105-107 and 150/152 are the scene archives' sprite format sitting in the global
-        // archive: a 14-byte frame record table followed by the frames, self-contained rather than split
-        // over a pair of slots. Their repeating record tables are what a hex view shows as stripes.
+        // Runaway 2 holds 33 self-contained sprite animations (e.g. slots 87-94, 105-107, 150, 152)
+        // plus 48 animations split across pairs of slots (a 14-byte frame record table slot followed
+        // by the frame data slot, e.g. slots 168-263). All 81 are verified here.
         if (!Directory.Exists(R2SteamDir)) return;
 
         var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
@@ -738,7 +738,7 @@ public class Runaway2InterfaceTests
             .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
 
         List<FsNode> animations = global.Children.Where(c => c.Kind == EntryKind.Animation).ToList();
-        Assert.Equal(33, animations.Count);
+        Assert.Equal(81, animations.Count);
 
         FsNode e087 = global.Children.Single(c => c.Name == "e087");
         Assert.Equal(EntryKind.Animation, e087.Kind);
@@ -795,4 +795,201 @@ public class Runaway2InterfaceTests
         DecodedImage image = CursorAtlasDecoder.DecodeAtlas(data);
         Assert.Equal((0, 0, 0, 0), SyntheticAssets.Pixel(image, 0, 0));
     }
+
+    [Fact]
+    public void CharacterSpriteR2_ParsesAndDecodesDirectRgb565Pixels()
+    {
+        ushort red = SyntheticAssets.Rgb565(255, 0, 0);
+        ushort green = SyntheticAssets.Rgb565(0, 255, 0);
+        var frames = new List<SyntheticAssets.CharacterFrameR2>
+        {
+            SyntheticAssets.SolidCharacterFrameR2(x: 100, y: 100, w: 20, h: 20, red),
+            SyntheticAssets.SolidCharacterFrameR2(x: 100, y: 100, w: 20, h: 20, green),
+        };
+        byte[] assetBytes = SyntheticAssets.CharacterEntryR2(frames);
+
+        Assert.True(CharacterSpriteAsset.CouldBeEntry(assetBytes, assetBytes.Length, bytesPerPixel: 2));
+
+        CharacterSpriteAsset? asset = CharacterSpriteAsset.Parse(assetBytes, bytesPerPixel: 2);
+        Assert.NotNull(asset);
+        Assert.Equal(2, asset.BytesPerPixel);
+        Assert.Equal(2, asset.FrameCount);
+        Assert.Null(asset.Verify());
+
+        SpriteFrame f0 = asset.DecodeFrame(0);
+        Assert.NotNull(f0.Image);
+        Assert.Equal((248, 0, 0, 255), SyntheticAssets.Pixel(f0.Image, 0, 0)); // RGBA
+
+        SpriteFrame f1 = asset.DecodeFrame(1);
+        Assert.NotNull(f1.Image);
+        Assert.Equal((0, 252, 0, 255), SyntheticAssets.Pixel(f1.Image, 0, 0));
+    }
+
+    [Fact]
+    public void SceneArchive_ClassifiesPairedCharacterSprites()
+    {
+        ushort blue = SyntheticAssets.Rgb565(0, 0, 255);
+        var frames = new List<SyntheticAssets.CharacterFrameR2>
+        {
+            SyntheticAssets.SolidCharacterFrameR2(x: 50, y: 50, w: 10, h: 10, blue),
+        };
+        var (table, data) = SyntheticAssets.CharacterEntryR2Parts(frames);
+
+        byte[] sceneBytes = Runaway2ContainerTests.SyntheticSceneR2([table, data]);
+        string tempFile = Path.Combine(Path.GetTempPath(), $"RESOURCE.SP1_{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(tempFile, sceneBytes);
+            (FsNode node, _) = VirtualFileSystem.BuildSceneArchive(tempFile, ScanCache.Ephemeral(), "en", GameVersion.Runaway2);
+            Assert.Equal(2, node.Children.Count);
+            Assert.Equal(EntryKind.CharacterAnimation, node.Children[0].Kind);
+            Assert.Equal(table.Length + data.Length, node.Children[0].Size);
+            Assert.Equal(1, node.Children[0].Image!.Frames);
+            Assert.Equal(EntryKind.Data, node.Children[1].Kind);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void SceneCatalog_FormatsNavigationMeshAndCharacterAnimation()
+    {
+        var navNode = new FsNode
+        {
+            Name = "e03",
+            Size = 335_529,
+            Kind = EntryKind.Data,
+        };
+        Assert.Equal("navigation mesh (e03)", SceneCatalog.FormatSceneEntryLabel(navNode, "en"));
+        Assert.Equal("malla de navegación (e03)", SceneCatalog.FormatSceneEntryLabel(navNode, "es"));
+
+        var charNode = new FsNode
+        {
+            Name = "e17",
+            Size = 3552249,
+            Kind = EntryKind.CharacterAnimation,
+            Image = new ImageInfo { Width = 92, Height = 87, Frames = 41 },
+        };
+        Assert.Equal("character animation, 41 frames, 92×87 (e17)", SceneCatalog.FormatSceneEntryLabel(charNode, "en"));
+        Assert.Equal("personaje, 41 fotogramas, 92×87 (e17)", SceneCatalog.FormatSceneEntryLabel(charNode, "es"));
+    }
+
+    [Fact]
+    public void SyntheticRouteTableR2_ParsesCorrectly()
+    {
+        var dict = new Dictionary<(int From, int To), (IReadOnlyList<(int X, int Y)> Waypoints, IReadOnlyList<byte> Hops)>
+        {
+            [(1, 2)] = ([(98, 459)], [2]),
+            [(1, 6)] = ([(100, 200), (200, 300)], [2, 4, 5, 6]),
+        };
+
+        byte[] data = SyntheticAssets.RouteTableR2(dict);
+        Assert.Equal(RouteDecoder.TotalSizeR2, data.Length);
+        Assert.True(RouteDecoder.IsRouteTable(data));
+
+        RouteMatrix matrix = RouteDecoder.Parse(data);
+        Assert.Equal(51, matrix.ZoneCount);
+        Assert.Equal(2601, matrix.RouteCount);
+        Assert.Equal(2, matrix.TotalActiveRoutes);
+        Assert.Equal(3, matrix.TotalWaypoints);
+
+        Route r12 = matrix.GetRoute(1, 2)!;
+        Assert.NotNull(r12);
+        Assert.True(r12.IsActive);
+        Assert.Single(r12.Waypoints);
+        Assert.Equal(98, r12.Waypoints[0].X);
+        Assert.Equal(459, r12.Waypoints[0].Y);
+        Assert.Equal([2], r12.ZoneHops);
+
+        Route r16 = matrix.GetRoute(1, 6)!;
+        Assert.NotNull(r16);
+        Assert.Equal(2, r16.Waypoints.Count);
+        Assert.Equal([2, 4, 5, 6], r16.ZoneHops);
+
+        string summary = RouteDecoder.FormatSummary(matrix);
+        Assert.Contains("2 active route(s)", summary);
+        Assert.Contains("51 zones", summary);
+    }
+
+    [Fact]
+    public void RealInstall_Runaway2_NavigationMeshParsesCorrectly()
+    {
+        const string r2SteamDir = @"F:\Games\Steam\steamapps\common\Runaway The Dream of the Turtle";
+        if (!Directory.Exists(r2SteamDir)) return;
+
+        string scenePath = Path.Combine(r2SteamDir, "Resource", "RESOURCE.A05");
+        if (!File.Exists(scenePath)) return;
+
+        byte[] fileBytes = File.ReadAllBytes(scenePath);
+        List<ArchiveEntry> entries = SceneArchive.ReadEntries(fileBytes, fileBytes.Length);
+        ArchiveEntry navEntry = Assert.Single(entries, e => e.Size == RouteDecoder.TotalSizeR2);
+
+        byte[] data = fileBytes.AsSpan((int)navEntry.Offset, (int)navEntry.Size).ToArray();
+        RouteMatrix matrix = RouteDecoder.Parse(data);
+
+        Assert.Equal(51, matrix.ZoneCount);
+        Assert.Equal(2601, matrix.RouteCount);
+        Assert.True(matrix.TotalActiveRoutes > 0);
+        Assert.True(matrix.TotalWaypoints > 0);
+
+        // Zone 1 -> 2
+        Route? r12 = matrix.GetRoute(1, 2);
+        Assert.NotNull(r12);
+        Assert.True(r12.IsActive);
+        Assert.Single(r12.Waypoints);
+        Assert.Equal(98, r12.Waypoints[0].X);
+        Assert.Equal(459, r12.Waypoints[0].Y);
+        Assert.Equal([2], r12.ZoneHops);
+
+        // Zone 1 -> 6 (hops 2 -> 4 -> 5 -> 6)
+        Route? r16 = matrix.GetRoute(1, 6);
+        Assert.NotNull(r16);
+        Assert.Equal([2, 4, 5, 6], r16.ZoneHops);
+    }
+
+    [Fact]
+    public void RealInstall_Runaway2_VideoKeyfileAndCutscenesRestoration()
+    {
+        const string r2SteamDir = @"F:\Games\Steam\steamapps\common\Runaway The Dream of the Turtle";
+        if (!Directory.Exists(r2SteamDir)) return;
+
+        string keyfilePath = Path.Combine(r2SteamDir, "Datav", "DATAVC00.000");
+        if (!File.Exists(keyfilePath)) return;
+
+        VideoKeyfile? keyfile = VideoKeyfile.Load(keyfilePath);
+        Assert.NotNull(keyfile);
+        Assert.Equal(121, keyfile.Count);
+
+        // Every video header begins with 'BIK'
+        foreach (string name in keyfile.Names)
+        {
+            byte[]? hdr = keyfile.HeaderFor(name);
+            Assert.NotNull(hdr);
+            Assert.Equal(1024, hdr.Length);
+            string magic = System.Text.Encoding.ASCII.GetString(hdr, 0, 3);
+            Assert.Equal("BIK", magic);
+        }
+
+        // Test VFS scan and video restoration
+        var vfs = VirtualFileSystem.Init(r2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode? videoFolder = vfs.Root.Children.FirstOrDefault(c => c.Name == VirtualFileSystem.VideoFolder);
+        Assert.NotNull(videoFolder);
+        Assert.True(videoFolder.Children.Count >= 120);
+
+        FsNode? b26Node = videoFolder.Children.FirstOrDefault(c => c.Name.Equals("DATAVB26.000", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(b26Node);
+        Assert.Equal(EntryKind.Video, b26Node.Kind);
+
+        using var restoredMs = new MemoryStream();
+        bool restored = vfs.RestoreVideo(b26Node, restoredMs);
+        Assert.True(restored);
+        Assert.Equal(b26Node.Size, restoredMs.Length);
+
+        byte[] restoredBytes = restoredMs.ToArray();
+        string b26Magic = System.Text.Encoding.ASCII.GetString(restoredBytes, 0, 4);
+        Assert.Equal("BIKi", b26Magic);
+    }
 }
+

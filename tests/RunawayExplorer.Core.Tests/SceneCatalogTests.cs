@@ -113,4 +113,33 @@ public class SceneCatalogTests
         Assert.Equal("animation, 8 frames, 64×64 (e12)", SceneCatalog.FormatSceneEntryLabel(animNode, "en"));
         Assert.Equal("animación, 8 fotogramas, 64×64 (e12)", SceneCatalog.FormatSceneEntryLabel(animNode, "es"));
     }
+
+    [Fact]
+    public void KnownSceneAssetNames_ProvideInvestigatedNamesBilingually()
+    {
+        string? d14Btn0En = SceneCatalog.GetKnownSceneAssetName("RESOURCE.D14", 2, "en");
+        string? d14Btn0Es = SceneCatalog.GetKnownSceneAssetName("RESOURCE.D14", 2, "es");
+        Assert.Equal("keypad numeric button '0'", d14Btn0En);
+        Assert.Equal("botón numérico '0' del teclado", d14Btn0Es);
+
+        string? f39DialEn = SceneCatalog.GetKnownSceneAssetName("RESOURCE.F39", 2, "en");
+        string? f39DialEs = SceneCatalog.GetKnownSceneAssetName("RESOURCE.F39", 2, "es");
+        Assert.Equal("rotating circular combination dial (0-99)", f39DialEn);
+        Assert.Equal("dial circular giratorio de combinación (0-99)", f39DialEs);
+
+        var node = new FsNode
+        {
+            Name = "e02",
+            ArchivePath = @"C:\Games\Resource\RESOURCE.D14",
+            EntryIndex = 2,
+            Kind = EntryKind.Overlay,
+            Image = new ImageInfo { Width = 32, Height = 32, X = 120, Y = 80 }
+        };
+        string formattedEn = SceneCatalog.FormatSceneEntryLabel(node, "en");
+        string formattedEs = SceneCatalog.FormatSceneEntryLabel(node, "es");
+
+        Assert.Equal("keypad numeric button '0' 32×32 at 120,80 (e02)", formattedEn);
+        Assert.Equal("botón numérico '0' del teclado 32×32 en 120,80 (e02)", formattedEs);
+    }
 }
+

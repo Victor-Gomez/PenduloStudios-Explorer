@@ -128,13 +128,13 @@ public static class GameVersionExtensions
 public static class GameDetector
 {
     /// <summary>
-    /// Detects the game version from the files present in <paramref name="baseDir"/>.
-    /// Defaults to <see cref="GameVersion.Runaway1"/> if unknown.
+    /// Attempts to detect the game version from the files present in <paramref name="baseDir"/>.
+    /// Returns null if no signatures match.
     /// </summary>
-    public static GameVersion Detect(string baseDir)
+    public static GameVersion? TryDetect(string baseDir)
     {
         if (string.IsNullOrEmpty(baseDir) || !Directory.Exists(baseDir))
-            return GameVersion.Runaway1;
+            return null;
 
         foreach (GameDefinition game in GameDefinition.All)
         {
@@ -146,6 +146,101 @@ public static class GameDetector
             }
         }
 
-        return GameVersion.Runaway1;
+        return null;
+    }
+
+    /// <summary>
+    /// Detects the game version from the files present in <paramref name="baseDir"/>.
+    /// Defaults to <see cref="GameVersion.Runaway1"/> if unknown.
+    /// </summary>
+    public static GameVersion Detect(string baseDir) =>
+        TryDetect(baseDir) ?? GameVersion.Runaway1;
+
+    /// <summary>
+    /// Searches common Steam and GOG library locations across available drives for installed Pendulo adventures.
+    /// </summary>
+    public static Dictionary<GameVersion, string> FindInstalledGames()
+    {
+        var results = new Dictionary<GameVersion, string>();
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 1. Check drive letters and common library directories
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                if (!drive.IsReady) continue;
+                string root = drive.RootDirectory.FullName;
+
+                string[] commonBases =
+                [
+                    Path.Combine(root, "Games", "Steam", "steamapps", "common"),
+                    Path.Combine(root, "Steam", "steamapps", "common"),
+                    Path.Combine(root, "SteamLibrary", "steamapps", "common"),
+                    Path.Combine(root, "Program Files (x86)", "Steam", "steamapps", "common"),
+                    Path.Combine(root, "Program Files", "Steam", "steamapps", "common"),
+                    Path.Combine(root, "GOG Games"),
+                    Path.Combine(root, "Games", "GOG"),
+                    Path.Combine(root, "Games"),
+                ];
+
+                foreach (string cb in commonBases)
+                {
+                    if (Directory.Exists(cb))
+                        candidates.Add(cb);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore drive enumeration errors
+        }
+
+        // 2. User profile directories on Linux / macOS
+        try
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrEmpty(home))
+            {
+                string[] userPaths =
+                [
+                    Path.Combine(home, ".local", "share", "Steam", "steamapps", "common"),
+                    Path.Combine(home, ".steam", "steam", "steamapps", "common"),
+                    Path.Combine(home, "GOG Games"),
+                ];
+                foreach (string up in userPaths)
+                {
+                    if (Directory.Exists(up))
+                        candidates.Add(up);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore
+        }
+
+        // 3. Inspect candidate parent folders for game installations
+        foreach (string parent in candidates)
+        {
+            try
+            {
+                foreach (string sub in Directory.EnumerateDirectories(parent))
+                {
+                    if (TryDetect(sub) is { } version && !results.ContainsKey(version))
+                    {
+                        results[version] = sub;
+                        if (results.Count == GameDefinition.All.Count)
+                            return results;
+                    }
+                }
+            }
+            catch
+            {
+                // Access denied or IO error
+            }
+        }
+
+        return results;
     }
 }

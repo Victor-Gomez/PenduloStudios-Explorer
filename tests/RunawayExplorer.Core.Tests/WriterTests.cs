@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using RunawayExplorer.Core.FileSystem;
 using RunawayExplorer.Core.Formats;
 using Xunit;
 using static RunawayExplorer.Core.Tests.SyntheticAssets;
@@ -240,5 +241,109 @@ public class DecodedImageTests
     public void RejectsMismatchedBuffers()
     {
         Assert.Throws<ArgumentException>(() => new DecodedImage(2, 2, new byte[3]));
+    }
+}
+
+public class SpriteSheetWriterTests
+{
+    private static SpriteAsset Asset() => SpriteAsset.Parse(Sprite(
+    [
+        new Frame([(100, 50, [Rgb565(255, 0, 0), Rgb565(255, 0, 0)])]),
+        new Frame([]),
+        new Frame([(103, 52, [Rgb565(0, 0, 255)])]),
+        new Frame([(101, 51, [Rgb565(0, 255, 0)])]),
+    ], sharedBox: false))!;
+
+    [Fact]
+    public void PacksFramesIntoGridAndOutputsValidManifest()
+    {
+        SpriteAsset asset = Asset();
+        var (sheet, manifest) = SpriteSheetWriter.BuildSheet(asset, fps: 20.0);
+
+        Assert.Equal(4, manifest.Frames.Count);
+        Assert.Equal(2, manifest.Meta.Columns);
+        Assert.Equal(2, manifest.Meta.Rows);
+        Assert.Equal(20.0, manifest.Meta.Fps);
+        Assert.Equal(manifest.Meta.Columns * manifest.Meta.CellWidth, sheet.Width);
+        Assert.Equal(manifest.Meta.Rows * manifest.Meta.CellHeight, sheet.Height);
+
+        string json = SpriteSheetWriter.WriteJson(asset);
+        Assert.Contains("\"FrameCount\": 4", json);
+        Assert.Contains("\"Columns\": 2", json);
+
+        byte[] png = SpriteSheetWriter.WritePng(asset);
+        Assert.True(png.Length > 0);
+        Assert.Equal(0x89, png[0]);
+    }
+
+    [Fact]
+    public void WritesPngAndJsonFilesToDisk()
+    {
+        SpriteAsset asset = Asset();
+        string tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            string pngPath = Path.Combine(tempDir, "sheet.png");
+            string jsonPath = Path.Combine(tempDir, "sheet.json");
+            SpriteSheetWriter.Write(asset, pngPath, 15.0);
+
+            Assert.True(File.Exists(pngPath));
+            Assert.True(File.Exists(jsonPath));
+            string json = File.ReadAllText(jsonPath);
+            Assert.Contains("\"FrameCount\": 4", json);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+}
+
+public class DialogueTranscriptWriterTests
+{
+    [Fact]
+    public void ExtractsAndFormatsDialogueAcrossTextSrtCsv()
+    {
+        var root = new FsNode { NodeType = FsNodeType.Directory, Name = "Scene_01" };
+        var line1 = new FsNode
+        {
+            NodeType = FsNodeType.File,
+            Kind = EntryKind.Dialogue,
+            Name = "line_01",
+            FriendlyName = "Brian",
+            Subtitle = "Where am I?",
+            VoiceClipIndex = 42,
+            Parent = root
+        };
+        var line2 = new FsNode
+        {
+            NodeType = FsNodeType.File,
+            Kind = EntryKind.Dialogue,
+            Name = "line_02",
+            FriendlyName = "Gina",
+            Subtitle = "In a hospital in New York.",
+            VoiceClipIndex = 43,
+            Parent = root
+        };
+        root.Children.AddRange([line1, line2]);
+
+        var entries = DialogueTranscriptWriter.ExtractEntries([root]);
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("Where am I?", entries[0].Text);
+        Assert.Equal(42, entries[0].VoiceClipIndex);
+
+        string txt = DialogueTranscriptWriter.WriteText([root], "Chapter 1");
+        Assert.Contains("=== Chapter 1 ===", txt);
+        Assert.Contains("[VOICE_00042] Brian:", txt);
+        Assert.Contains("\"Where am I?\"", txt);
+
+        string srt = DialogueTranscriptWriter.WriteSrt([root], secondsPerLine: 2.0);
+        Assert.Contains("00:00:00,000 --> 00:00:02,000", srt);
+        Assert.Contains("[Voice #42] Where am I?", srt);
+
+        string csv = DialogueTranscriptWriter.WriteCsv([root]);
+        Assert.Contains("Index,Name,Stage,VoiceClip,Text", csv);
+        Assert.Contains("1,\"line_01\",\"Scene_01\",\"42\",\"Where am I?\"", csv);
     }
 }

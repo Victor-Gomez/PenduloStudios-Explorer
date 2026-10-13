@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using RunawayExplorer.Core.Formats;
 using RunawayExplorer.Core.Metadata;
 
@@ -33,6 +34,7 @@ public sealed class VirtualFileSystem
     public const string DialogueFolder = "Dialogue";
     public const string CharactersFolder = "Characters";
     public const string GlobalFolder = "Global Data";
+    public const string SavegamesFolder = "Saves";
 
     public const int VoiceGroupSize = 500;
     public const int DialogueGroupSize = 500;
@@ -118,12 +120,16 @@ public sealed class VirtualFileSystem
         public int Visemes { get; set; }
         public int Phrases { get; set; }
         public int CharacterAnimations { get; set; }
+        public int ActorAnimations { get; set; }
+        public int Savegames { get; set; }
         public bool FromCache { get; set; }
 
         public override string ToString() =>
             $"{SceneArchives} scenes: {Backgrounds} backgrounds, {Masks} masks, {Overlays} overlays, {Animations} animations; " +
             $"{AudioClips} audio clips, {VoiceClips} voice lines, {Videos} videos, {Visemes} lip-sync tracks, {Phrases} dialogue phrases" +
-            (CharacterAnimations > 0 ? $", {CharacterAnimations} character animations" : "");
+            (CharacterAnimations > 0 ? $", {CharacterAnimations} character animations" : "") +
+            (ActorAnimations > 0 ? $", {ActorAnimations} actor animations" : "") +
+            (Savegames > 0 ? $", {Savegames} saves" : "");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -243,6 +249,7 @@ public sealed class VirtualFileSystem
                     case EntryKind.Mask: summary.Masks++; break;
                     case EntryKind.Overlay: summary.Overlays++; break;
                     case EntryKind.Animation: summary.Animations++; break;
+                    case EntryKind.CharacterAnimation: summary.CharacterAnimations++; break;
                     default: summary.DataEntries++; break;
                 }
             }
@@ -285,8 +292,10 @@ public sealed class VirtualFileSystem
                     // RESOURCE.003 is the script: obfuscated rows indexed by scene, not the Runaway 2
                     // phrase table (see docs/formats/global-data.md).
                     progress?.Invoke($"Reading {name}");
-                    FsNode script = Attach(dialogue, BuildHollywoodScriptArchive(path));
+                    var (script, hmTranscripts) = BuildHollywoodScriptArchive(path, gameVersion, activeLanguage);
+                    Attach(dialogue, script);
                     summary.Phrases = script.Children.Sum(stage => stage.Children.Count);
+                    transcripts = hmTranscripts;
                 }
             }
             else if (upper.StartsWith("RESOURCE.M", StringComparison.Ordinal))
@@ -311,13 +320,30 @@ public sealed class VirtualFileSystem
                 progress?.Invoke($"Reading {name}");
                 summary.Visemes += Attach(lipSync, BuildVisemeArchive(path)).Children.Count;
             }
-            else if (upper == "RESOURCE.003" && gameVersion != GameVersion.Runaway1)
+            else if (upper == "RESOURCE.003")
             {
                 progress?.Invoke($"Reading {name}");
-                var (dNode, dTranscripts) = BuildPhraseArchive(path, gameVersion);
-                Attach(dialogue, dNode);
-                summary.Phrases = dTranscripts.Count;
-                transcripts = dTranscripts;
+                if (gameVersion == GameVersion.Runaway1)
+                {
+                    var (script, r1Transcripts) = BuildHollywoodScriptArchive(path, gameVersion, activeLanguage);
+                    if (script.Children.Count > 0)
+                    {
+                        Attach(dialogue, script);
+                        summary.Phrases = script.Children.Sum(stage => stage.Children.Count);
+                        transcripts = r1Transcripts;
+                    }
+                    else
+                    {
+                        Attach(global, LooseFile(path));
+                    }
+                }
+                else
+                {
+                    var (dNode, dTranscripts) = BuildPhraseArchive(path, gameVersion);
+                    Attach(dialogue, dNode);
+                    summary.Phrases = dTranscripts.Count;
+                    transcripts = dTranscripts;
+                }
             }
             else if (CharacterSpriteArchive.IsLibraryName(name, gameVersion))
             {
@@ -327,13 +353,68 @@ public sealed class VirtualFileSystem
             else if (upper == "RESOURCE.000")
             {
                 progress?.Invoke($"Reading {name}");
-                Attach(global, BuildGlobalArchive(path, gameVersion, cache));
+                FsNode gNode = BuildGlobalArchive(path, gameVersion, cache, activeLanguage);
+                gNode.FriendlyName = SceneCatalog.GetGlobalTitle(name, activeLanguage, gameVersion);
+                Attach(global, gNode);
+
+                // The player character's animations are slots of this same archive, but they span two
+                // slots each and are not entries the classifier can recognise one at a time, so they get
+                // their own folder beside the rest of the cast. The raw slots stay in Global Data: this
+                // adds a reading of them, it does not replace one, which is also why nothing here
+                // touches the scan cache.
+                if (ActorArchive.IsActorArchive(name, gameVersion)
+                    && BuildActorLibrary(path, activeLanguage) is { } actor)
+                {
+                    summary.ActorAnimations += Attach(characters, actor).Children.Count;
+                }
             }
-            else if (upper == "RESOURCE.IFZ")
+            else if (upper == "RESOURCE.IFZ" || upper == "RESOURCE.PSE")
             {
-                // The Next BIG Thing and Yesterday have no RESOURCE.000; their interface art lives here.
+                // The Next BIG Thing and Yesterday interface and pause screen art
                 progress?.Invoke($"Reading {name}");
-                Attach(global, BuildInterfaceArchive(path));
+                FsNode ifzNode = BuildInterfaceArchive(path);
+                ifzNode.FriendlyName = SceneCatalog.GetGlobalTitle(name, activeLanguage, gameVersion);
+                Attach(global, ifzNode);
+            }
+            else if (upper == "RESOURCE.TAB")
+            {
+                // The Next BIG Thing and Yesterday scene camera and waypoint geometry table
+                progress?.Invoke($"Reading {name}");
+                FsNode tabNode = BuildSceneTableArchive(path, gameVersion, activeLanguage);
+                tabNode.FriendlyName = SceneCatalog.GetGlobalTitle(name, activeLanguage, gameVersion);
+                Attach(global, tabNode);
+            }
+            else if (upper == "RESOURCE.FNT" && gameVersion == GameVersion.Yesterday)
+            {
+                // Yesterday 24-bit outlined font library
+                progress?.Invoke($"Reading {name}");
+                FsNode fntNode = BuildYesterdayFontArchive(path);
+                fntNode.FriendlyName = SceneCatalog.GetGlobalTitle(name, activeLanguage, gameVersion);
+                Attach(global, fntNode);
+            }
+            else if (upper == "RESOURCE.005" && gameVersion == GameVersion.Runaway3)
+            {
+                // Runaway 3 chapter interaction and event database
+                progress?.Invoke($"Reading {name}");
+                FsNode intNode = BuildChapterInteractionArchive(path);
+                intNode.FriendlyName = SceneCatalog.GetGlobalTitle(name, activeLanguage, gameVersion);
+                Attach(global, intNode);
+            }
+            else if (gameVersion == GameVersion.Yesterday && upper is "RESOURCE.CRD" or "RESOURCE.B31")
+            {
+                // Yesterday's Credits and B31 cutscene Bink videos in Resource/uk
+                progress?.Invoke($"Reading {name}");
+                var fi = new FileInfo(path);
+                Attach(video, new FsNode
+                {
+                    NodeType = FsNodeType.File,
+                    Kind = EntryKind.Video,
+                    Name = name,
+                    FriendlyName = $"{name}  {FormatSize(fi.Length)}",
+                    Size = fi.Length,
+                    ArchivePath = path,
+                });
+                summary.Videos++;
             }
             else
             {
@@ -347,10 +428,63 @@ public sealed class VirtualFileSystem
             summary.VoiceClips = BuildVoice(voice, dataaDir, gameVersion, transcripts);
         }
 
-        if (datavDir is not null)
+        string? videoDir = datavDir
+            ?? FindDir(baseDir, "Video")
+            ?? FindDir(baseDir, "Videos")
+            ?? FindDir(baseDir, "Movies")
+            ?? FindDir(baseDir, "Cinematics")
+            ?? FindDir(baseDir, "Smk");
+
+        if (videoDir is not null)
         {
             progress?.Invoke("Reading videos");
-            summary.Videos = BuildVideos(video, datavDir, keyfile, gameVersion);
+            summary.Videos = BuildVideos(video, videoDir, keyfile, gameVersion);
+        }
+
+        if (gameVersion == GameVersion.HollywoodMonsters)
+        {
+            summary.Videos += BuildHollywoodLooseVideos(video, baseDir, resourceDir);
+        }
+
+        string? saveDir = FindDir(baseDir, "SAVEGAME")
+            ?? (Path.GetFileName(baseDir).Equals("SAVEGAME", StringComparison.OrdinalIgnoreCase) ? baseDir : null);
+        if (saveDir is not null && gameVersion == GameVersion.Runaway1)
+        {
+            List<string> savePaths = SavegameArchive.FindSaves(saveDir);
+            if (savePaths.Count > 0)
+            {
+                progress?.Invoke("Reading savegames");
+                FsNode saves = Folder(root, SavegamesFolder);
+                saves.FriendlyName = SceneCatalog.GetCategoryTitle(SavegamesFolder, activeLanguage);
+                foreach (string savePath in savePaths)
+                {
+                    int slot = SavegameArchive.GetSlotNumber(savePath);
+                    byte[] head = new byte[Math.Min(SavegameArchive.FileSize, 0x1B715)];
+                    using (FileStream fs = File.OpenRead(savePath))
+                    {
+                        fs.ReadExactly(head, 0, head.Length);
+                    }
+                    SavegameInfo meta = SavegameArchive.ReadMetadata(head, slot, gameVersion);
+                    string sceneTitle = meta.SceneArchiveName is not null
+                        ? SceneCatalog.GetSceneTitle(meta.SceneArchiveName, activeLanguage, gameVersion)
+                        : $"Scene {meta.SceneId}";
+                    string label = meta.Name.Length > 0
+                        ? $"Slot {slot:000} — \"{meta.Name}\" ({sceneTitle})"
+                        : $"Slot {slot:000} ({sceneTitle})";
+
+                    Attach(saves, new FsNode
+                    {
+                        NodeType = FsNodeType.File,
+                        Kind = EntryKind.Savegame,
+                        Name = Path.GetFileName(savePath),
+                        FriendlyName = label,
+                        Size = new FileInfo(savePath).Length,
+                        ArchivePath = savePath,
+                        Image = new ImageInfo { Width = SavegameArchive.ThumbnailWidth, Height = SavegameArchive.ThumbnailHeight },
+                    });
+                    summary.Savegames++;
+                }
+            }
         }
 
         // Empty categories only add noise.
@@ -386,10 +520,33 @@ public sealed class VirtualFileSystem
                 node.FriendlyName = SceneCatalog.GetSceneTitle(node.Name, language, GameVersion);
             else if (node.Parent.Name is MusicFolder or AmbientFolder or CinematicFolder)
                 node.FriendlyName = SceneCatalog.GetAudioTitle(node.Name, language, GameVersion);
+            else if (node.Parent.Name == GlobalFolder)
+                node.FriendlyName = SceneCatalog.GetGlobalTitle(node.Name, language, GameVersion);
         }
         else if (node.IsFile && node.Parent?.Parent?.Name == ScenesFolder)
         {
             node.FriendlyName = SceneCatalog.FormatSceneEntryLabel(node, language);
+        }
+        else if (node.IsFile && node.Parent?.Parent?.Name == GlobalFolder)
+        {
+            if (GameVersion == GameVersion.HollywoodMonsters && node.Kind == EntryKind.Ambient)
+            {
+                string sfxName = SceneCatalog.GetHollywoodResidentSoundName(node.EntryIndex, language);
+                string dur = FormatDuration(HollywoodMonstersSoundPcm.DurationSeconds(node.Size));
+                node.FriendlyName = $"e{node.EntryIndex:000}  {sfxName} ({dur})";
+            }
+            else if (SceneCatalog.GetKnownGlobalAssetName(GameVersion, node.EntryIndex, language) is { } known)
+            {
+                if (GameVersion == GameVersion.Runaway1 && node.EntryIndex == 150 && node.Kind == EntryKind.Ambient)
+                {
+                    string dur = FormatDuration(VoicePcm.DurationSeconds(node.Size));
+                    node.FriendlyName = $"e{node.EntryIndex:000}  {known} ({dur})";
+                }
+                else
+                {
+                    node.FriendlyName = $"e{node.EntryIndex:000}  {known}";
+                }
+            }
         }
 
         foreach (FsNode child in node.Children)
@@ -419,6 +576,7 @@ public sealed class VirtualFileSystem
                 rawEntries = SceneArchive.ReadHeaderlessScreenEntries(f.Length);
             var pairedWithPrev = new HashSet<int>();
             Span<byte> head = stackalloc byte[16];
+            Span<byte> charHead = stackalloc byte[CharacterSpriteAsset.RecordSize];
 
             int? sceneWidth = null;
             int? sceneHeight = null;
@@ -434,18 +592,17 @@ public sealed class VirtualFileSystem
                     continue;
                 }
 
-                bool isR2SpritePair = false;
-                if (gameVersion == GameVersion.Runaway2 && i + 1 < rawEntries.Count && entry.Size >= 16)
+                bool isPaired = false;
+                if (gameVersion == GameVersion.Runaway2 && i + 1 < rawEntries.Count)
                 {
                     ArchiveEntry nextEntry = rawEntries[i + 1];
                     if (entry.Offset + entry.Size == nextEntry.Offset)
                     {
-                        f.Position = entry.Offset;
-                        if (f.Read(head) == 16)
+                        if (entry.Size == CharacterSpriteAsset.FrameTableSize && nextEntry.Size > 0)
                         {
-                            ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(head);
-                            uint fo0 = BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(2));
-                            if (fc > 0 && fc <= 2000 && fo0 == 0 && entry.Size == 2 + fc * 14)
+                            f.Position = entry.Offset;
+                            if (f.Read(charHead) == CharacterSpriteAsset.RecordSize
+                                && CharacterSpriteAsset.CouldBeEntry(charHead, entry.Size + nextEntry.Size, bytesPerPixel: 2))
                             {
                                 long totalSize = entry.Size + nextEntry.Size;
                                 if (totalSize <= 50_000_000)
@@ -453,20 +610,54 @@ public sealed class VirtualFileSystem
                                     var combined = new byte[totalSize];
                                     f.Position = entry.Offset;
                                     f.ReadExactly(combined);
-                                    if (SpriteAsset.Parse(combined) is { } sprite)
+                                    if (CharacterSpriteAsset.Parse(combined, bytesPerPixel: 2) is { } charSprite)
                                     {
-                                        isR2SpritePair = true;
+                                        isPaired = true;
                                         pairedWithPrev.Add(i + 1);
                                         var combinedEntry = new ArchiveEntry(entry.Index, entry.Offset, totalSize);
-                                        var classification = new EntryClassification(EntryKind.Animation, new ImageInfo
+                                        var classification = new EntryClassification(EntryKind.CharacterAnimation, new ImageInfo
                                         {
-                                            X = sprite.Bounds.X,
-                                            Y = sprite.Bounds.Y,
-                                            Width = sprite.Bounds.Width,
-                                            Height = sprite.Bounds.Height,
-                                            Frames = sprite.FrameCount,
+                                            X = charSprite.Bounds.X,
+                                            Y = charSprite.Bounds.Y,
+                                            Width = charSprite.Bounds.Width,
+                                            Height = charSprite.Bounds.Height,
+                                            Frames = charSprite.FrameCount,
                                         });
                                         cached.Add(ScanCache.CachedEntry.From(combinedEntry, classification));
+                                    }
+                                }
+                            }
+                        }
+                        else if (entry.Size >= 16)
+                        {
+                            f.Position = entry.Offset;
+                            if (f.Read(head) == 16)
+                            {
+                                ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(head);
+                                uint fo0 = BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(2));
+                                if (fc > 0 && fc <= 2000 && fo0 == 0 && entry.Size == 2 + fc * 14)
+                                {
+                                    long totalSize = entry.Size + nextEntry.Size;
+                                    if (totalSize <= 50_000_000)
+                                    {
+                                        var combined = new byte[totalSize];
+                                        f.Position = entry.Offset;
+                                        f.ReadExactly(combined);
+                                        if (SpriteAsset.Parse(combined) is { } sprite)
+                                        {
+                                            isPaired = true;
+                                            pairedWithPrev.Add(i + 1);
+                                            var combinedEntry = new ArchiveEntry(entry.Index, entry.Offset, totalSize);
+                                            var classification = new EntryClassification(EntryKind.Animation, new ImageInfo
+                                            {
+                                                X = sprite.Bounds.X,
+                                                Y = sprite.Bounds.Y,
+                                                Width = sprite.Bounds.Width,
+                                                Height = sprite.Bounds.Height,
+                                                Frames = sprite.FrameCount,
+                                            });
+                                            cached.Add(ScanCache.CachedEntry.From(combinedEntry, classification));
+                                        }
                                     }
                                 }
                             }
@@ -474,7 +665,7 @@ public sealed class VirtualFileSystem
                     }
                 }
 
-                if (!isR2SpritePair)
+                if (!isPaired)
                 {
                     var buffer = new byte[entry.Size];
                     f.Position = entry.Offset;
@@ -635,6 +826,8 @@ public sealed class VirtualFileSystem
 
         using FileStream f = File.OpenRead(path);
         List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(f);
+        if (entries.Count == 0)
+            entries = SceneArchive.ReadEntries(f);
 
         var head = new byte[64];
         foreach (ArchiveEntry e in entries)
@@ -678,6 +871,149 @@ public sealed class VirtualFileSystem
                 ArchivePath = path,
                 Image = image,
             });
+        }
+
+        return node;
+    }
+
+    /// <summary>
+    /// <c>RESOURCE.TAB</c>, the scene geometry, camera, and waypoint table of The Next BIG Thing and Yesterday.
+    /// Unpacks each defined scene as an entry showing its geometry (e.g. 1920×1080) and archive name.
+    /// </summary>
+    private static FsNode BuildSceneTableArchive(string path, GameVersion gameVersion, string language)
+    {
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = Path.GetFileName(path),
+            ArchivePath = path,
+            Size = new FileInfo(path).Length,
+        };
+
+        byte[] data = File.ReadAllBytes(path);
+        List<SceneRecord> scenes = SceneTable.Parse(data);
+        foreach (SceneRecord s in scenes)
+        {
+            string sceneTitle = SceneCatalog.GetSceneTitle(s.ArchiveName, language, gameVersion);
+            string desc = s.Width > 0 && s.Height > 0
+                ? $"{s.ArchiveName} ({s.Width}×{s.Height})"
+                : s.ArchiveName;
+            string label = $"s{s.SceneId:000} — {desc}  {FormatSize(s.Size)}";
+
+            Attach(node, new FsNode
+            {
+                NodeType = FsNodeType.File | FsNodeType.InArchive,
+                Kind = EntryKind.SceneTable,
+                Name = $"s{s.SceneId:000}",
+                FriendlyName = label,
+                Offset = s.Offset,
+                Size = s.Size,
+                EntryIndex = s.Index,
+                ArchivePath = path,
+                Image = s.Width > 0 ? new ImageInfo { Width = s.Width, Height = s.Height } : null,
+            });
+        }
+
+        return node;
+    }
+
+    /// <summary>
+    /// Yesterday's 24-bit outlined font library (RESOURCE.FNT).
+    /// </summary>
+    private static FsNode BuildYesterdayFontArchive(string path)
+    {
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = Path.GetFileName(path),
+            FriendlyName = $"{Path.GetFileName(path)}  (2 fonts)",
+            Size = new FileInfo(path).Length,
+            ArchivePath = path,
+        };
+
+        byte[] data = File.ReadAllBytes(path);
+        List<YesterdayFont> fonts = YesterdayFontArchive.ReadFonts(data);
+        foreach (YesterdayFont f in fonts)
+        {
+            Attach(node, new FsNode
+            {
+                NodeType = FsNodeType.File | FsNodeType.InArchive,
+                Kind = EntryKind.Font,
+                Name = $"font{f.Index}",
+                FriendlyName = $"{f.Name}  ({f.Glyphs.Length} glyphs, 24-bit)",
+                Size = f.BitmapRgb.Length,
+                EntryIndex = f.Index,
+                ArchivePath = path,
+            });
+        }
+
+        return node;
+    }
+
+    /// <summary>
+    /// Runaway 3's chapter interaction database (RESOURCE.005).
+    /// </summary>
+    private static FsNode BuildChapterInteractionArchive(string path)
+    {
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = Path.GetFileName(path),
+            FriendlyName = $"{Path.GetFileName(path)}  (7 chapters)",
+            Size = new FileInfo(path).Length,
+            ArchivePath = path,
+        };
+
+        byte[] data = File.ReadAllBytes(path);
+        if (ChapterInteractionArchive.IsInteractionDatabase(data))
+        {
+            var db = ChapterInteractionArchive.Parse(data);
+            foreach (ChapterInfo ch in db.Chapters)
+            {
+                var chRecs = db.GetRecordsForChapter(ch.ChapterId).ToList();
+                int sceneCount = chRecs.Select(r => r.SceneId).Distinct().Count();
+                var chNode = Attach(node, new FsNode
+                {
+                    NodeType = FsNodeType.Directory,
+                    Name = $"Chapter {ch.ChapterId}",
+                    FriendlyName = $"Chapter {ch.ChapterId}  ({sceneCount} scenes, {ch.RecordCount} triggers)",
+                    ArchivePath = path,
+                    EntryIndex = ch.ChapterId,
+                });
+
+                var scenes = chRecs.GroupBy(r => r.SceneId).OrderBy(g => g.Key);
+                foreach (var sceneGroup in scenes)
+                {
+                    int objCount = sceneGroup.Select(r => r.ObjectId).Distinct().Count();
+                    var scNode = Attach(chNode, new FsNode
+                    {
+                        NodeType = FsNodeType.Directory,
+                        Name = $"Scene {sceneGroup.Key:D3}",
+                        FriendlyName = $"Scene {sceneGroup.Key:D3}  ({objCount} objects, {sceneGroup.Count()} triggers)",
+                        ArchivePath = path,
+                        EntryIndex = sceneGroup.Key,
+                    });
+
+                    foreach (InteractionRecord rec in sceneGroup.OrderBy(r => r.ObjectId).ThenBy(r => r.ActionId))
+                    {
+                        string label = !string.IsNullOrWhiteSpace(rec.DecodedLabel)
+                            ? $"Obj {rec.ObjectId:D3} [{rec.VerbName}] — \"{rec.DecodedLabel}\""
+                            : $"Obj {rec.ObjectId:D3} [{rec.VerbName}]";
+
+                        Attach(scNode, new FsNode
+                        {
+                            NodeType = FsNodeType.File | FsNodeType.InArchive,
+                            Kind = EntryKind.Data,
+                            Name = $"trigger_{rec.Index:0000}",
+                            FriendlyName = label,
+                            Size = ChapterInteractionArchive.RecordSize,
+                            EntryIndex = rec.Index,
+                            Offset = rec.Offset,
+                            ArchivePath = path,
+                        });
+                    }
+                }
+            }
         }
 
         return node;
@@ -740,7 +1076,170 @@ public sealed class VirtualFileSystem
         return node;
     }
 
-    private static FsNode BuildGlobalArchive(string path, GameVersion gameVersion = GameVersion.Runaway1, ScanCache? cache = null)
+    /// <summary>The eight facings, in the order the walk table stores them.</summary>
+    private static readonly string[] FacingNamesEn =
+        ["away", "up-right", "right", "down-right", "towards", "down-left", "left", "up-left"];
+
+    private static readonly string[] FacingNamesEs =
+        ["de espaldas", "arriba-derecha", "derecha", "abajo-derecha", "de frente", "abajo-izquierda", "izquierda", "arriba-izquierda"];
+
+    /// <summary>
+    /// Which facings each head view serves: the renderer picks one with <c>hmap = 0,1,2,2,3,4,4,5</c>,
+    /// so heads 2 and 4 cover two facings each -- standing is never in profile, so a facing of 2 becomes
+    /// 3 and 6 becomes 5 at the end of a walk (see <c>docs/formats/executable.md</c>).
+    /// </summary>
+    private static readonly int[][] HeadFacings = [[0], [1], [2, 3], [4], [5, 6], [7]];
+
+    /// <summary>
+    /// What a costume group is for, in the game's own terms: which scenes select it, and which side its
+    /// key light comes from. The pairs are the same drawing lit from opposite sides, which is the only
+    /// thing that distinguishes the second group of a pair from the first.
+    /// </summary>
+    private static (string Chapters, bool LitFromLeft) ActorGroupLabel(int group) => group switch
+    {
+        10 => ("chapters 1-2", false),
+        27 => ("chapters 1-2", true),
+        44 => ("chapter 3", false),
+        61 => ("chapter 3", true),
+        78 => ("chapters 4-6", false),
+        _ => ("chapters 4-6", true),
+    };
+
+    private static (string Chapters, bool LitFromLeft) ActorGroupLabelEs(int group) => group switch
+    {
+        10 => ("capitulos 1-2", false),
+        27 => ("capitulos 1-2", true),
+        44 => ("capitulo 3", false),
+        61 => ("capitulo 3", true),
+        78 => ("capitulos 4-6", false),
+        _ => ("capitulos 4-6", true),
+    };
+
+    /// <summary>
+    /// The player character's own animations from <c>RESOURCE.000</c>, as one folder of 84: six costume
+    /// groups of eight walk cycles and six talking heads (see <see cref="ActorArchive"/>).
+    /// <para>
+    /// Nothing is probed. A group is taken only when all seventeen of its slots are there at the sizes
+    /// the layout requires, and then every animation in it exists by construction. A walk cycle is
+    /// labelled from its frame record, which costs one table read per group; a head has to have frame 0
+    /// walked, because a head record carries the box of the <em>body</em> it is painted over rather than
+    /// its own -- 36 short reads, against a 110 MB archive.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> when no group is present, so an install this layout does not fit gets no
+    /// folder rather than an empty one.
+    /// </para>
+    /// </summary>
+    private static FsNode? BuildActorLibrary(string path, string language)
+    {
+        using FileStream f = File.OpenRead(path);
+        Dictionary<int, ArchiveEntry> slots = GlobalArchive
+            .ReadEntries(f, GameVersion.Runaway1)
+            .ToDictionary(e => e.Index);
+
+        bool spanish = SceneCatalog.IsSpanish(language);
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = "Actor",
+            FriendlyName = spanish ? "el protagonista (RESOURCE.000)" : "the player character (RESOURCE.000)",
+            ArchivePath = path,
+            Size = new FileInfo(path).Length,
+        };
+
+        foreach (int group in ActorArchive.GroupSlots)
+        {
+            if (!ActorArchive.HasGroup(slots, group))
+                continue;
+
+            ArchiveEntry walkTable = slots[group];
+            ArchiveEntry headTable = slots[group + ActorArchive.HeadTableSlot];
+            var records = new byte[Math.Max(walkTable.Size, headTable.Size)];
+
+            f.Position = walkTable.Offset;
+            f.ReadExactly(records.AsSpan(0, (int)walkTable.Size));
+
+            (string chapters, bool litFromLeft) = spanish ? ActorGroupLabelEs(group) : ActorGroupLabel(group);
+            string light = spanish
+                ? (litFromLeft ? "luz por la izquierda" : "luz por la derecha")
+                : (litFromLeft ? "lit from the left" : "lit from the right");
+
+            for (int dir = 0; dir < ActorArchive.WalkDirections; dir++)
+            {
+                var animation = new ActorAnimation(group, ActorRole.Walk, dir);
+                int at = animation.TableOffset;
+                int width = BinaryPrimitives.ReadInt32LittleEndian(records.AsSpan(at + 24));
+                int height = BinaryPrimitives.ReadInt32LittleEndian(records.AsSpan(at + 28));
+                string facing = (spanish ? FacingNamesEs : FacingNamesEn)[dir];
+                Attach(node, ActorNode(
+                    path, animation, slots[animation.DataSlot], width, height, ActorArchive.WalkFrames,
+                    spanish
+                        ? $"caminar {facing}, {chapters}, {light} ({ActorArchive.WalkFrames} fotogramas {width}x{height})"
+                        : $"walk {facing}, {chapters}, {light} ({ActorArchive.WalkFrames} frames {width}x{height})"));
+            }
+
+            f.Position = headTable.Offset;
+            f.ReadExactly(records.AsSpan(0, (int)headTable.Size));
+
+            for (int head = 0; head < ActorArchive.Heads; head++)
+            {
+                var animation = new ActorAnimation(group, ActorRole.Head, head);
+                (int width, int height) = HeadFrameSize(f, slots[animation.DataSlot], records, animation);
+                string facings = string.Join("/", HeadFacings[head].Select(d => (spanish ? FacingNamesEs : FacingNamesEn)[d]));
+                Attach(node, ActorNode(
+                    path, animation, slots[animation.DataSlot], width, height, ActorArchive.HeadFrames,
+                    spanish
+                        ? $"cabeza {facings}, {chapters}, {light} ({ActorArchive.HeadFrames} fotogramas {width}x{height})"
+                        : $"head {facings}, {chapters}, {light} ({ActorArchive.HeadFrames} frames {width}x{height})"));
+            }
+        }
+
+        return node.Children.Count == 0 ? null : node;
+    }
+
+    private static FsNode ActorNode(
+        string path, ActorAnimation animation, ArchiveEntry data, int width, int height, int frames, string friendly)
+    {
+        string name = animation.Role == ActorRole.Walk
+            ? $"g{animation.Group:000}-walk{animation.Index}"
+            : $"g{animation.Group:000}-head{animation.Index}";
+
+        return new FsNode
+        {
+            NodeType = FsNodeType.File | FsNodeType.InArchive,
+            Kind = EntryKind.ActorAnimation,
+            Name = name,
+            FriendlyName = $"{friendly} ({name})",
+            Offset = data.Offset,
+            Size = data.Size,
+            EntryIndex = data.Index,
+            ArchivePath = path,
+            Image = new ImageInfo { Width = width, Height = height, Frames = frames },
+        };
+    }
+
+    /// <summary>
+    /// A talking head's own size, by walking frame 0. Its record states the box of the body frame the
+    /// patch is painted over, so reading the size out of the record gives the whole character.
+    /// </summary>
+    private static (int Width, int Height) HeadFrameSize(
+        FileStream f, ArchiveEntry data, byte[] headTable, ActorAnimation animation)
+    {
+        int at = animation.TableOffset;
+        int frame0End = BinaryPrimitives.ReadInt32LittleEndian(headTable.AsSpan(at + CharacterSpriteAsset.RecordSize));
+        if (frame0End <= 0 || frame0End > data.Size)
+            return (0, 0);
+
+        var bytes = new byte[frame0End];
+        f.Position = data.Offset;
+        f.ReadExactly(bytes);
+
+        CharacterSpriteAsset? frame0 = CharacterSpriteAsset.Parse(
+            headTable.AsSpan(at, CharacterSpriteAsset.RecordSize), 1, bytes, CharacterSpriteGeometry.HeadPatch);
+        return frame0 is null ? (0, 0) : (frame0.Bounds.Width, frame0.Bounds.Height);
+    }
+
+    private static FsNode BuildGlobalArchive(string path, GameVersion gameVersion = GameVersion.Runaway1, ScanCache? cache = null, string? language = null)
     {
         var node = new FsNode
         {
@@ -776,6 +1275,8 @@ public sealed class VirtualFileSystem
         var fontTableSlots = new HashSet<int>();
         var cursorAtlasSlots = new HashSet<int>();
         var bmpSlots = new Dictionary<int, (int Width, int Height)>();
+        var pairedSpriteSlots = new Dictionary<int, (ImageInfo Image, long CombinedSize)>();
+        var pairedSecondSlots = new HashSet<int>();
 
         var rasterSlots = new System.Collections.Concurrent.ConcurrentDictionary<int, (int Width, int Height)>();
         var spriteSlots = new System.Collections.Concurrent.ConcurrentDictionary<int, ImageInfo>();
@@ -786,6 +1287,7 @@ public sealed class VirtualFileSystem
         int fontRecordSize = FontDecoder.RecordSizeFor(gameVersion);
         bool probeCursors = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2;
         bool probeBmp = gameVersion == GameVersion.Runaway3;
+        bool probePairedSprites = gameVersion == GameVersion.Runaway2;
 
         // The RGB565 games' rasters are recognised by their exact size, and a size can lie: Runaway 2
         // stores one long data stream in consecutive slots of exactly one screen's worth of bytes
@@ -797,12 +1299,45 @@ public sealed class VirtualFileSystem
         // self-contained rather than split over a pair of slots, and they walk byte-exact like any other.
         bool probeSprites = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2 or GameVersion.Runaway3;
 
-        if (probeFonts || probeCursors || probeBmp || probeRasters || probeSprites)
+        if (probeFonts || probeCursors || probeBmp || probeRasters || probeSprites || probePairedSprites)
         {
             using FileStream f = File.OpenRead(path);
+            Span<byte> pairHead = stackalloc byte[16];
 
             foreach (ArchiveEntry e in entries)
             {
+                // Paired sprite detection for Runaway 2 (e.g. slots 168-263):
+                if (probePairedSprites && !pairedSecondSlots.Contains(e.Index)
+                    && byIndex.TryGetValue(e.Index + 1, out ArchiveEntry nextSprite)
+                    && e.Offset + e.Size == nextSprite.Offset
+                    && e.Size >= 16 && e.Size < 50_000_000 && nextSprite.Size > 0 && nextSprite.Size < 50_000_000)
+                {
+                    f.Position = e.Offset;
+                    if (f.Read(pairHead) == 16)
+                    {
+                        ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(pairHead);
+                        uint fo0 = BinaryPrimitives.ReadUInt32LittleEndian(pairHead.Slice(2));
+                        if (fc > 0 && fc <= 2000 && fo0 == 0 && e.Size == 2 + fc * 14)
+                        {
+                            long totalSize = e.Size + nextSprite.Size;
+                            var combined = new byte[totalSize];
+                            f.Position = e.Offset;
+                            f.ReadExactly(combined);
+                            if (SpriteAsset.Parse(combined) is { } sprite)
+                            {
+                                pairedSpriteSlots[e.Index] = (new ImageInfo
+                                {
+                                    X = sprite.Bounds.X,
+                                    Y = sprite.Bounds.Y,
+                                    Width = sprite.Bounds.Width,
+                                    Height = sprite.Bounds.Height,
+                                    Frames = sprite.FrameCount,
+                                }, totalSize);
+                                pairedSecondSlots.Add(nextSprite.Index);
+                            }
+                        }
+                    }
+                }
                 // Font detection: if the next slot exists and its contents validate as a glyph table
                 // whose records tile this entry exactly, mark both slots.
                 if (probeFonts && byIndex.TryGetValue(e.Index + 1, out ArchiveEntry next))
@@ -850,7 +1385,8 @@ public sealed class VirtualFileSystem
         {
             Parallel.ForEach(
                 entries.Where(e => !fontBitmapSlots.Contains(e.Index) && !fontTableSlots.Contains(e.Index)
-                    && !cursorAtlasSlots.Contains(e.Index) && !bmpSlots.ContainsKey(e.Index)),
+                    && !cursorAtlasSlots.Contains(e.Index) && !bmpSlots.ContainsKey(e.Index)
+                    && !pairedSpriteSlots.ContainsKey(e.Index) && !pairedSecondSlots.Contains(e.Index)),
                 () => File.OpenRead(path),
                 (e, state, f) =>
                 {
@@ -905,7 +1441,7 @@ public sealed class VirtualFileSystem
                         if (RasterDecoder.LooksLikeArtwork(data, rw, rh))
                             rasterSlots[e.Index] = (rw, rh);
                     }
-                    else if (RasterDecoder.Detect(data) is { IsMask: false } detected
+                    else if (RasterDecoder.Detect(data, gameVersion) is { IsMask: false } detected
                         && RasterDecoder.LooksLikeArtwork(data, detected.Width, detected.Height))
                     {
                         // Not one of the screen geometries: a picture of its own size, its width
@@ -930,31 +1466,55 @@ public sealed class VirtualFileSystem
         var classifiedEntries = new List<ScanCache.CachedEntry>(entries.Count);
         foreach (ArchiveEntry e in entries)
         {
-            // Hollywood Monsters keeps its resident sound effects -- the ones that must be audible in every
-            // scene -- in the tail of RESOURCE.000 rather than in a sound bank, at the same 8-bit 11,025 Hz
-            // shape as RESOURCE.S<nn>. Several slots are aliases of one another, byte for byte.
-            bool residentSound = gameVersion == GameVersion.HollywoodMonsters
-                && e.Index >= ResidentSoundFirstEntry && e.Index <= ResidentSoundLastEntry;
+            bool r1ClickSound = gameVersion == GameVersion.Runaway1 && e.Index == 150 && e.Size == 4978;
+            bool residentSound = (gameVersion == GameVersion.HollywoodMonsters
+                && e.Index >= ResidentSoundFirstEntry && e.Index <= ResidentSoundLastEntry) || r1ClickSound;
 
             EntryKind kind;
             ImageInfo? image = null;
             string label;
+            ArchiveEntry cacheEntry = e;
 
-            if (residentSound)
+            string? knownName = SceneCatalog.GetKnownGlobalAssetName(gameVersion, e.Index, language);
+
+            if (pairedSpriteSlots.TryGetValue(e.Index, out (ImageInfo Image, long CombinedSize) paired))
+            {
+                kind = paired.Image.Frames == 1 ? EntryKind.Overlay : EntryKind.Animation;
+                image = paired.Image;
+                string what = knownName ?? (paired.Image.Frames == 1
+                    ? $"sprite {image.Width}×{image.Height}"
+                    : $"animation, {image.Frames} frames, {image.Width}×{image.Height}");
+                label = $"e{e.Index:000}  {what}";
+                cacheEntry = new ArchiveEntry(e.Index, e.Offset, paired.CombinedSize);
+            }
+            else if (residentSound)
             {
                 kind = EntryKind.Ambient;
-                label = $"e{e.Index:000}  {FormatSize(e.Size)}";
+                if (r1ClickSound)
+                {
+                    string sfxName = knownName ?? "UI click / select SFX";
+                    string dur = FormatDuration(VoicePcm.DurationSeconds(e.Size));
+                    label = $"e{e.Index:000}  {sfxName} ({dur})";
+                }
+                else
+                {
+                    string sfxName = SceneCatalog.GetHollywoodResidentSoundName(e.Index, language);
+                    string dur = FormatDuration(HollywoodMonstersSoundPcm.DurationSeconds(e.Size));
+                    label = $"e{e.Index:000}  {sfxName} ({dur})";
+                }
             }
             else if (fontBitmapSlots.Contains(e.Index))
             {
                 kind = EntryKind.Font;
-                label = $"e{e.Index:000}  font bitmap, {FormatSize(e.Size)}";
+                string what = knownName ?? $"font bitmap, {FormatSize(e.Size)}";
+                label = $"e{e.Index:000}  {what}";
             }
             else if (fontTableSlots.Contains(e.Index))
             {
                 int glyphs = (int)(e.Size / fontRecordSize);
                 kind = EntryKind.Font;
-                label = $"e{e.Index:000}  glyph table, {glyphs} glyphs";
+                string what = knownName is not null ? $"{knownName}, {glyphs} glyphs" : $"glyph table, {glyphs} glyphs";
+                label = $"e{e.Index:000}  {what}";
             }
             else if (cursorAtlasSlots.Contains(e.Index))
             {
@@ -964,21 +1524,29 @@ public sealed class VirtualFileSystem
                     Width = CursorAtlasDecoder.AtlasWidth,
                     Height = CursorAtlasDecoder.AtlasHeight,
                 };
-                label = $"e{e.Index:000}  cursor atlas {CursorAtlasDecoder.AtlasWidth}×{CursorAtlasDecoder.AtlasHeight}";
+                string what = knownName ?? $"cursor atlas {CursorAtlasDecoder.AtlasWidth}×{CursorAtlasDecoder.AtlasHeight}";
+                label = $"e{e.Index:000}  {what}";
             }
             else if (bmpSlots.TryGetValue(e.Index, out (int Width, int Height) bmp))
             {
                 kind = EntryKind.Background;
                 image = new ImageInfo { Width = bmp.Width, Height = bmp.Height };
-                label = $"e{e.Index:000}  bitmap {bmp.Width}×{bmp.Height}";
+                string what = knownName ?? $"bitmap {bmp.Width}×{bmp.Height}";
+                label = $"e{e.Index:000}  {what}";
+            }
+            else if (gameVersion == GameVersion.HollywoodMonsters && e.Index == 43 && e.Size == HollywoodItemIconsAsset.TotalBytes)
+            {
+                kind = EntryKind.Animation;
+                image = new ImageInfo { Width = HollywoodItemIconsAsset.IconSize, Height = HollywoodItemIconsAsset.IconSize, Frames = HollywoodItemIconsAsset.IconCount };
+                label = $"e{e.Index:000}  inventory item icons, 126 icons 64×64";
             }
             else if (spriteSlots.TryGetValue(e.Index, out ImageInfo? sprite))
             {
                 kind = sprite.Frames == 1 ? EntryKind.Overlay : EntryKind.Animation;
                 image = sprite;
-                string what = sprite.Frames == 1
+                string what = knownName ?? (sprite.Frames == 1
                     ? $"sprite {sprite.Width}×{sprite.Height}"
-                    : $"animation, {sprite.Frames} frames, {sprite.Width}×{sprite.Height}";
+                    : $"animation, {sprite.Frames} frames, {sprite.Width}×{sprite.Height}");
                 label = $"e{e.Index:000}  {what}";
             }
             else if (rasterSlots.TryGetValue(e.Index, out (int Width, int Height) raster))
@@ -986,15 +1554,24 @@ public sealed class VirtualFileSystem
                 (int gw, int gh) = raster;
                 kind = EntryKind.Background;
                 image = new ImageInfo { Width = gw, Height = gh };
-                label = $"e{e.Index:000}  {GlobalRasterName(gameVersion, e.Index, gw)} {gw}×{gh}";
+                string what = knownName ?? $"{GlobalRasterName(gameVersion, e.Index, gw)} {gw}×{gh}";
+                label = $"e{e.Index:000}  {what}";
+            }
+            else if (gameVersion == GameVersion.Runaway1 && (e.Index == 118 || e.Index == 157) && e.Size == 48 * 48 * 2)
+            {
+                kind = EntryKind.Background;
+                image = new ImageInfo { Width = 48, Height = 48 };
+                string what = knownName ?? $"badge 48×48";
+                label = $"e{e.Index:000}  {what}";
             }
             else
             {
                 kind = EntryKind.GlobalData;
-                label = $"e{e.Index:000}  {FormatSize(e.Size)}";
+                string what = knownName ?? FormatSize(e.Size);
+                label = $"e{e.Index:000}  {what}";
             }
 
-            var classified = ScanCache.CachedEntry.From(e, new EntryClassification(kind, image));
+            var classified = ScanCache.CachedEntry.From(cacheEntry, new EntryClassification(kind, image));
             classified.Label = label;
             classifiedEntries.Add(classified);
             AttachGlobalEntry(node, path, classified, gameVersion);
@@ -1007,7 +1584,15 @@ public sealed class VirtualFileSystem
     /// <summary>Hangs one classified global-archive entry on the archive node.</summary>
     private static void AttachGlobalEntry(FsNode node, string path, ScanCache.CachedEntry c, GameVersion gameVersion)
     {
-        bool residentSound = gameVersion == GameVersion.HollywoodMonsters && c.Kind == EntryKind.Ambient;
+        AudioInfo? audio = null;
+        if (c.Kind == EntryKind.Ambient)
+        {
+            if (gameVersion == GameVersion.HollywoodMonsters)
+                audio = HollywoodMonstersSoundPcm;
+            else if (gameVersion == GameVersion.Runaway1 && c.Index == 150)
+                audio = VoicePcm;
+        }
+
         Attach(node, new FsNode
         {
             NodeType = FsNodeType.File | FsNodeType.InArchive,
@@ -1019,7 +1604,7 @@ public sealed class VirtualFileSystem
             EntryIndex = c.Index,
             ArchivePath = path,
             Image = c.Kind is EntryKind.GlobalData or EntryKind.Ambient or EntryKind.Font ? null : c.ToImageInfo(),
-            Audio = residentSound ? HollywoodMonstersSoundPcm : null,
+            Audio = audio,
         });
     }
 
@@ -1038,11 +1623,13 @@ public sealed class VirtualFileSystem
     }
 
     /// <summary>
-    /// Builds the <em>Hollywood Monsters</em> script tree from <c>RESOURCE.003</c>: one folder per scene,
-    /// holding that scene's hotspot labels and its spoken lines. A line that the scene's cues pair with a
-    /// recording carries the voice-bank slot, so the viewer can point at the clip.
+    /// <summary>
+    /// Builds the <em>Hollywood Monsters</em> or <em>Runaway 1</em> script tree from <c>RESOURCE.003</c>:
+    /// one folder per scene, holding that scene's hotspot labels and its spoken lines. A line that the scene's
+    /// cues pair with a recording carries the voice-bank slot, so the viewer can point at the clip.
     /// </summary>
-    private static FsNode BuildHollywoodScriptArchive(string path)
+    private static (FsNode Node, Dictionary<int, string> Transcripts) BuildHollywoodScriptArchive(
+        string path, GameVersion gameVersion = GameVersion.HollywoodMonsters, string language = "en")
     {
         var node = new FsNode
         {
@@ -1054,15 +1641,39 @@ public sealed class VirtualFileSystem
 
         List<HollywoodScript.Stage> stages;
         using (FileStream f = File.OpenRead(path))
-            stages = HollywoodScript.ReadStages(f);
+            stages = HollywoodScript.ReadStages(f, gameVersion);
+
+        var transcripts = new Dictionary<int, string>();
 
         foreach (HollywoodScript.Stage stage in stages)
         {
+            string groupName;
+            string friendlyName;
+
+            if (gameVersion == GameVersion.Runaway1)
+            {
+                int areaNum = stage.Index / 100;
+                int sceneNum = stage.Index % 100;
+                string archiveName = areaNum >= 1 && areaNum <= 9
+                    ? $"RESOURCE.{(char)('A' + areaNum - 1)}{sceneNum:00}"
+                    : $"scene {stage.SceneNumber}";
+                string sceneTitle = SceneCatalog.GetSceneTitle(archiveName, language, gameVersion);
+                groupName = archiveName;
+                friendlyName = !string.IsNullOrEmpty(sceneTitle) && archiveName != sceneTitle
+                    ? $"{archiveName} — {sceneTitle}  ({stage.Lines.Count} lines)"
+                    : $"{archiveName}  ({stage.Lines.Count} lines)";
+            }
+            else
+            {
+                groupName = $"scene {stage.SceneNumber}";
+                friendlyName = $"scene {stage.SceneNumber}  ({stage.Lines.Count} lines, {stage.Labels.Count} labels)";
+            }
+
             var group = new FsNode
             {
                 NodeType = FsNodeType.Directory,
-                Name = $"scene {stage.SceneNumber}",
-                FriendlyName = $"scene {stage.SceneNumber}  ({stage.Lines.Count} lines, {stage.Labels.Count} labels)",
+                Name = groupName,
+                FriendlyName = friendlyName,
                 ArchivePath = path,
                 EntryIndex = stage.Index,
             };
@@ -1097,10 +1708,15 @@ public sealed class VirtualFileSystem
                     Subtitle = line.Text,
                     VoiceClipIndex = line.VoiceClipId,
                 });
+
+                if (line.VoiceClipId >= 0 && !string.IsNullOrEmpty(line.Text))
+                {
+                    transcripts.TryAdd(line.VoiceClipId, line.Text);
+                }
             }
         }
 
-        return node;
+        return (node, transcripts);
     }
 
     private static string Preview(string text) =>
@@ -1341,23 +1957,122 @@ public sealed class VirtualFileSystem
         foreach (string path in files)
         {
             string name = Path.GetFileName(path);
-            bool isPlainBink = gameVersion is GameVersion.Runaway3 or GameVersion.TheNextBigThing or GameVersion.Yesterday;
+            if (gameVersion == GameVersion.Yesterday && name.EndsWith(".001", StringComparison.OrdinalIgnoreCase))
+                continue; // Subtitle files in Yesterday are paired with matching .000 videos below
+
+            bool isPlainBink = gameVersion is GameVersion.Runaway3 or GameVersion.TheNextBigThing or GameVersion.Yesterday or GameVersion.HollywoodMonsters;
             if (!isPlainBink && VideoKeyfile.IsKeyfileName(name))
                 continue;
 
             var fi = new FileInfo(path);
-            bool restorable = isPlainBink || keyfile?.HeaderFor(name) is not null;
+            bool isSmk = name.EndsWith(".smk", StringComparison.OrdinalIgnoreCase);
+            ImageInfo? imgInfo = null;
+
+            if (isSmk || (gameVersion == GameVersion.HollywoodMonsters && fi.Length >= SmackerVideo.HeaderSize))
+            {
+                byte[] head = new byte[Math.Min(fi.Length, SmackerVideo.HeaderSize)];
+                using (var fs = File.OpenRead(path))
+                    fs.ReadExactly(head);
+                if (SmackerVideo.TryParse(head) is { } smk)
+                {
+                    imgInfo = new ImageInfo { Width = smk.Width, Height = smk.Height };
+                    isSmk = true;
+                }
+            }
+
+            bool restorable = isPlainBink || isSmk || keyfile?.HeaderFor(name) is not null;
+
+            string? subTrack = null;
+            string? subPreview = null;
+            if (gameVersion == GameVersion.Yesterday)
+            {
+                string subPath = Path.ChangeExtension(path, ".001");
+                if (File.Exists(subPath))
+                {
+                    try
+                    {
+                        string subContent = File.ReadAllText(subPath, Encoding.Latin1);
+                        var cues = CutsceneSubtitles.Parse(subContent);
+                        if (cues.Count > 0)
+                        {
+                            subTrack = CutsceneSubtitles.ToSummary(cues);
+                            subPreview = cues[0].Text;
+                            if (subPreview.Length > 35) subPreview = subPreview[..32] + "...";
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            string friendly;
+            if (imgInfo is not null)
+                friendly = $"{name}  {FormatSize(fi.Length)}  ({imgInfo.Width}×{imgInfo.Height})";
+            else if (subPreview is not null)
+                friendly = $"{name}  {FormatSize(fi.Length)}  \"{subPreview}\"";
+            else
+                friendly = $"{name}  {FormatSize(fi.Length)}{(restorable ? "" : " (no header in keyfile)")}";
+
             Attach(video, new FsNode
             {
                 NodeType = FsNodeType.File,
                 Kind = restorable ? EntryKind.Video : EntryKind.RawFile,
                 Name = name,
-                FriendlyName = $"{name}  {FormatSize(fi.Length)}{(restorable ? "" : " (no header in keyfile)")}",
+                FriendlyName = friendly,
                 Size = fi.Length,
                 ArchivePath = path,
+                Subtitle = subTrack,
+                Image = imgInfo,
             });
             if (restorable)
                 count++;
+        }
+        return count;
+    }
+
+    private static int BuildHollywoodLooseVideos(FsNode video, string baseDir, string? resourceDir)
+    {
+        int count = 0;
+        var scannedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { baseDir };
+        if (!string.IsNullOrEmpty(resourceDir))
+            scannedDirs.Add(resourceDir);
+
+        foreach (string dir in scannedDirs)
+        {
+            if (!Directory.Exists(dir))
+                continue;
+
+            foreach (string path in Directory.GetFiles(dir))
+            {
+                string name = Path.GetFileName(path);
+                if (!name.EndsWith(".smk", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (video.Children.Any(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                var fi = new FileInfo(path);
+                if (fi.Length < SmackerVideo.HeaderSize)
+                    continue;
+
+                byte[] head = new byte[SmackerVideo.HeaderSize];
+                using (var fs = File.OpenRead(path))
+                    fs.ReadExactly(head);
+
+                if (SmackerVideo.TryParse(head) is { } smk)
+                {
+                    Attach(video, new FsNode
+                    {
+                        NodeType = FsNodeType.File,
+                        Kind = EntryKind.Video,
+                        Name = name,
+                        FriendlyName = $"{name}  {FormatSize(fi.Length)}  ({smk.Width}×{smk.Height})",
+                        Size = fi.Length,
+                        ArchivePath = path,
+                        Image = new ImageInfo { Width = smk.Width, Height = smk.Height },
+                    });
+                    count++;
+                }
+            }
         }
         return count;
     }
@@ -1400,6 +2115,7 @@ public sealed class VirtualFileSystem
         EntryKind.Overlay => 3,
         EntryKind.Animation => 4,
         EntryKind.CharacterAnimation => 4,
+        EntryKind.ActorAnimation => 4,
         EntryKind.Music => 5,
         EntryKind.Ambient => 6,
         EntryKind.Cinematic => 7,
@@ -1597,10 +2313,29 @@ public sealed class VirtualFileSystem
     public IndexedPalette? CharacterPaletteFor(FsNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        if (node.Kind != EntryKind.CharacterAnimation || node.EntryIndex < 0)
+        if (node.EntryIndex < 0)
             return null;
 
-        int slot = CharacterSpriteArchive.PaletteSlotFor(node.EntryIndex);
+        // The actor's own animations name their palette outright -- it is the second slot of their
+        // group -- so nothing has to be inferred for them.
+        int slot;
+        if (node.Kind == EntryKind.ActorAnimation)
+        {
+            if (ActorArchive.FromDataSlot(node.EntryIndex) is not { } animation)
+                return null;
+            slot = animation.PaletteSlot;
+        }
+        else if (node.Kind == EntryKind.CharacterAnimation)
+        {
+            if (GameVersion != GameVersion.Runaway1)
+                return null;
+            slot = CharacterSpriteArchive.PaletteSlotFor(node.EntryIndex);
+        }
+        else
+        {
+            return null;
+        }
+
         lock (_paletteGate)
         {
             if (_characterPalettes.TryGetValue(slot, out IndexedPalette? cached))
@@ -1624,7 +2359,7 @@ public sealed class VirtualFileSystem
     }
 
     /// <summary>The <c>RESOURCE.000</c> block that defines exactly <paramref name="colors"/> colours, if there is one.</summary>
-    private IndexedPalette? SharedPalette(int colors)
+    public IndexedPalette? SharedPalette(int colors)
     {
         lock (_paletteGate)
         {
@@ -1683,7 +2418,7 @@ public sealed class VirtualFileSystem
                 return cached;
         }
 
-        FsNode? tableEntry = archive.Children.FirstOrDefault(c => c.Size == 1536);
+        FsNode? tableEntry = archive.Children.FirstOrDefault(c => c.Size is 1536 or 1792);
         byte[]? tableBytes = null;
         if (tableEntry is not null)
         {
@@ -1709,7 +2444,7 @@ public sealed class VirtualFileSystem
         if (node.Kind != EntryKind.Video || node.ArchivePath is null)
             return false;
 
-        if (GameVersion is GameVersion.Runaway3 or GameVersion.TheNextBigThing or GameVersion.Yesterday || Keyfile is null)
+        if (GameVersion is GameVersion.Runaway3 or GameVersion.TheNextBigThing or GameVersion.Yesterday or GameVersion.HollywoodMonsters || Keyfile is null)
         {
             using FileStream src = File.OpenRead(node.ArchivePath);
             src.CopyTo(output);
@@ -1736,6 +2471,12 @@ public sealed class VirtualFileSystem
             (Rgb565.ScreenWidth, Rgb565.ScreenHeight), // menu panel, inventory screen, item close-ups
             (904, 480),                                // inventory item icon sheets
             (700, 74),                                 // UI sprite strips
+            (80, 1840),                                // Chapter 1 inventory strip
+            (80, 2079),                                // Chapter 2 inventory strip
+            (80, 3360),                                // Chapter 3 inventory strip
+            (80, 3760),                                // Chapter 4 inventory strip
+            (80, 1360),                                // Chapter 5 inventory strip
+            (80, 1920),                                // Chapter 6 inventory strip
         ],
         GameVersion.Runaway2 =>
         [
@@ -1747,12 +2488,29 @@ public sealed class VirtualFileSystem
 
     private static bool TryGlobalRaster(GameVersion game, long size, out int width, out int height)
     {
-        // Hollywood Monsters is one byte per pixel, and the only thing in its global archive at screen
-        // size is the menu panel: the save-slot list, the preview window and the four setting sliders.
+        // Hollywood Monsters is one byte per pixel:
+        // Screen-sized (1024x480): menu panel (entry 42)
+        // Bottom action panel (1024x189 = 193,536 bytes): entry 47
+        // Dialogue menu frame (640x45 = 28,800 bytes): entry 48
         if (game == GameVersion.HollywoodMonsters)
         {
-            (width, height) = (Rgb565.ScreenWidth, HollywoodMonstersScreenHeight);
-            return size == (long)width * height;
+            if (size == (long)Rgb565.ScreenWidth * HollywoodMonstersScreenHeight)
+            {
+                (width, height) = (Rgb565.ScreenWidth, HollywoodMonstersScreenHeight);
+                return true;
+            }
+            if (size == 1024 * 189)
+            {
+                (width, height) = (1024, 189);
+                return true;
+            }
+            if (size == 640 * 45)
+            {
+                (width, height) = (640, 45);
+                return true;
+            }
+            (width, height) = (0, 0);
+            return false;
         }
 
         foreach ((int w, int h) in GlobalRasterGeometries(game))
@@ -1777,6 +2535,8 @@ public sealed class VirtualFileSystem
     /// <summary>What a recognised <c>RESOURCE.000</c> raster is, for the tree label.</summary>
     private static string GlobalRasterName(GameVersion game, int index, int width) => (game, index) switch
     {
+        (GameVersion.HollywoodMonsters, 47) => "bottom action panel",
+        (GameVersion.HollywoodMonsters, 48) => "dialogue menu panel",
         (GameVersion.HollywoodMonsters, _) => "menu panel",
         // Easy to get backwards: 131 looks like a title backdrop, but 132 is the one carrying the volume
         // knob, the brightness lever and the setting holes the menu draws its entries over. Those slots are
@@ -1812,5 +2572,17 @@ public sealed class VirtualFileSystem
         if (t.TotalHours >= 1)
             return $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}";
         return $"{t.Minutes}:{t.Seconds:00}";
+    }
+
+    /// <summary>Finds a voice clip node across the file system by its clip index.</summary>
+    public FsNode? FindVoiceClip(int clipIndex)
+    {
+        if (clipIndex < 0) return null;
+        FsNode? voiceFolder = Root.Children.FirstOrDefault(c => c.Name == VoiceFolder);
+        if (voiceFolder is not null)
+        {
+            return EnumerateFiles(voiceFolder).FirstOrDefault(n => n.Kind == EntryKind.Voice && n.EntryIndex == clipIndex);
+        }
+        return EnumerateFiles(Root).FirstOrDefault(n => n.Kind == EntryKind.Voice && n.EntryIndex == clipIndex);
     }
 }

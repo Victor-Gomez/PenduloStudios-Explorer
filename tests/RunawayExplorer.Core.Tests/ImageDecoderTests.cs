@@ -26,6 +26,7 @@ public class RasterDecoderTests
     [InlineData(204, 120)]
     [InlineData(282, 188)]
     [InlineData(1372, 600)]
+    [InlineData(1536, 600)]
     [InlineData(2592, 600)]
     public void DetectsTheWidthOfAHeaderlessRaster(int width, int height)
     {

@@ -1,3 +1,5 @@
+using RunawayExplorer.Core.FileSystem;
+
 namespace RunawayExplorer.Core.Formats;
 
 /// <summary>Result of <see cref="RasterDecoder.Detect"/>: the geometry of a headerless raster, without decoding it.</summary>
@@ -29,8 +31,8 @@ public static class RasterDecoder
     /// <summary>Pixels used to re-score the handful of candidate widths the coarse sweep surfaced.</summary>
     private const int FineSamplePixels = 400_000;
 
-    /// <summary>sharpness = median(sweep) / best. Real images score 5–17; something that is not an image ~1.1.</summary>
-    public const double SharpnessMin = 2.5;
+    /// <summary>sharpness = median(sweep) / best. Real images score 5–17; bordered rasters ~2.4; non-images ~1.1.</summary>
+    public const double SharpnessMin = 2.4;
 
     /// <summary>
     /// Mask layers (walk-behind / hotspot indices) have index values in the pixel slots, so neighbouring
@@ -42,24 +44,52 @@ public static class RasterDecoder
     /// Works out whether <paramref name="data"/> is a raster and, if so, its size. Cheap enough to run
     /// at scan time; nothing is decoded.
     /// </summary>
-    public static RasterInfo? Detect(ReadOnlySpan<byte> data)
+    public static RasterInfo? Detect(ReadOnlySpan<byte> data, GameVersion gameVersion = GameVersion.Runaway1)
     {
         if (data.Length < MinBytes || data.Length > 8_500_000 || data.Length % 2 != 0)
             return null;
 
         int total = data.Length / 2;
 
+        (int screenW, int screenH) = gameVersion switch
+        {
+            GameVersion.Runaway3 => (1280, 720),
+            _ => (Rgb565.ScreenWidth, Rgb565.ScreenHeight),
+        };
+        int screen = screenW * screenH;
+
         // Exactly one full screen needs no detection (Runaway 1/2: 1024x600, Runaway 3: 1280x720).
-        const int screen = Rgb565.ScreenWidth * Rgb565.ScreenHeight;
-        const int screenR3 = 1280 * 720;
         if (total == screen)
         {
-            return new RasterInfo(Rgb565.ScreenWidth, Rgb565.ScreenHeight, 99.0, IsMaskLayer(data, Rgb565.ScreenWidth, Rgb565.ScreenHeight));
+            return new RasterInfo(screenW, screenH, 99.0, IsMaskLayer(data, screenW, screenH));
         }
-        if (total == screenR3)
+
+        // Known fixed-size rasters: Runaway 1 museum lab monitor feeds (106,032 bytes = 282×188)
+        // and chapter selection thumbnails (48,960 bytes = 204×120).
+        if (total == 282 * 188)
         {
-            return new RasterInfo(1280, 720, 99.0, IsMaskLayer(data, 1280, 720));
+            return new RasterInfo(282, 188, 99.0, false);
         }
+        if (total == 204 * 120)
+        {
+            return new RasterInfo(204, 120, 99.0, false);
+        }
+
+        // Non-standard scene dimensions configured by the executable's scene loader:
+        // RESOURCE.D06 (Scene 4060): 1760×1200 (2,112,000 px, 4,224,000 bytes)
+        // RESOURCE.D03 (Scene 4030): 1200×670 (804,000 px, 1,608,000 bytes)
+        // RESOURCE.E10 (Scene 5100): 1880×700 (1,316,000 px, 2,632,000 bytes)
+        // RESOURCE.F27: 1024×700 (716,800 px, 1,433,600 bytes)
+        // RESOURCE.G01: 1400×760 (1,064,000 px, 2,128,000 bytes)
+        // RESOURCE.G02: 1640×800 (1,312,000 px, 2,624,000 bytes)
+        // RESOURCE.G03: 1520×900 (1,368,000 px, 2,736,000 bytes)
+        if (total == 1760 * 1200) return new RasterInfo(1760, 1200, 99.0, false);
+        if (total == 1200 * 670) return new RasterInfo(1200, 670, 99.0, false);
+        if (total == 1880 * 700) return new RasterInfo(1880, 700, 99.0, false);
+        if (total == 1024 * 700) return new RasterInfo(1024, 700, 99.0, false);
+        if (total == 1400 * 760) return new RasterInfo(1400, 760, 99.0, false);
+        if (total == 1640 * 800) return new RasterInfo(1640, 800, 99.0, false);
+        if (total == 1520 * 900) return new RasterInfo(1520, 900, 99.0, false);
 
         (int w0, double sharp)? detected = DetectStride(data);
         if (detected is { } d && d.sharp >= SharpnessMin)
@@ -79,13 +109,8 @@ public static class RasterDecoder
         // Fallback for one or more stacked full screens that are too flat to defeat stride detection (e.g. solid title cards).
         if (total % screen == 0)
         {
-            int h = total / Rgb565.ScreenWidth;
-            return new RasterInfo(Rgb565.ScreenWidth, h, 99.0, IsMaskLayer(data, Rgb565.ScreenWidth, h));
-        }
-        if (total % screenR3 == 0)
-        {
-            int h = total / 1280;
-            return new RasterInfo(1280, h, 99.0, IsMaskLayer(data, 1280, h));
+            int h = total / screenW;
+            return new RasterInfo(screenW, h, 99.0, IsMaskLayer(data, screenW, h));
         }
 
         return null;
@@ -93,16 +118,37 @@ public static class RasterDecoder
 
     /// <summary>
     /// Works out whether <paramref name="data"/> is one of Hollywood Monsters' 8-bit indexed rasters.
-    /// There is no stride to recover here: the game's screen is a fixed 1024x480 and every background is
-    /// exactly one screen, or a whole number of them stacked.
+    /// Supports full-screen rasters (1024x480), travel screen tiles (200x93), bottom action panel (1024x189),
+    /// and dialogue menu panels (640x45).
     /// </summary>
     public static RasterInfo? DetectIndexed(ReadOnlySpan<byte> data)
     {
         const int screen = IndexedScreenWidth * IndexedScreenHeight;
-        if (data.Length < screen || data.Length % screen != 0)
-            return null;
-        int h = data.Length / IndexedScreenWidth;
-        return new RasterInfo(IndexedScreenWidth, h, 99.0, false);
+        if (data.Length >= screen && data.Length % screen == 0)
+        {
+            int h = data.Length / IndexedScreenWidth;
+            return new RasterInfo(IndexedScreenWidth, h, 99.0, false);
+        }
+
+        // Travel destination tiles (RESOURCE.I04 chunks 2-6): 200x93 = 18,600 bytes
+        if (data.Length == 200 * 93)
+        {
+            return new RasterInfo(200, 93, 99.0, false);
+        }
+
+        // Bottom action panel (RESOURCE.000 entry 47): 1024x189 = 193,536 bytes
+        if (data.Length == 1024 * 189)
+        {
+            return new RasterInfo(1024, 189, 99.0, false);
+        }
+
+        // Dialogue menu panel (RESOURCE.000 entry 48): 640x45 = 28,800 bytes
+        if (data.Length == 640 * 45)
+        {
+            return new RasterInfo(640, 45, 99.0, false);
+        }
+
+        return null;
     }
 
     /// <summary>Decodes an 8-bit indexed raster through <paramref name="palette"/>.</summary>
@@ -129,9 +175,9 @@ public static class RasterDecoder
     }
 
     /// <summary>Detect + decode in one step. <see langword="null"/> when the bytes are not a raster.</summary>
-    public static (DecodedImage Image, RasterInfo Info)? TryDecode(ReadOnlySpan<byte> data)
+    public static (DecodedImage Image, RasterInfo Info)? TryDecode(ReadOnlySpan<byte> data, GameVersion gameVersion = GameVersion.Runaway1)
     {
-        if (Detect(data) is not { } info)
+        if (Detect(data, gameVersion) is not { } info)
             return null;
         return (Decode(data, info.Width, info.Height), info);
     }

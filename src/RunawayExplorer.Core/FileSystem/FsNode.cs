@@ -83,6 +83,20 @@ public enum EntryKind
     /// container and codec from <see cref="Animation"/>, so it loads through a different decoder.
     /// </summary>
     CharacterAnimation,
+
+    /// <summary>
+    /// One animation of the player character from <c>RESOURCE.000</c>: a walk cycle or a talking head.
+    /// The codec is <see cref="CharacterAnimation"/>'s, but the frame records are in a slot of their own
+    /// rather than in front of the runs, so it loads through a different path -- see
+    /// <c>ActorArchive</c>. New members go after this one: the ordinals are persisted by the scan cache.
+    /// </summary>
+    ActorAnimation,
+
+    /// <summary>A saved game slot with an embedded 204×120 RGB565 thumbnail and state metadata.</summary>
+    Savegame,
+
+    /// <summary>A scene navigation, geometry, and camera definition table from <c>RESOURCE.TAB</c>.</summary>
+    SceneTable,
 }
 
 /// <summary>Image-shaped facts gathered at scan time so the tree can label entries without re-decoding.</summary>

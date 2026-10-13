@@ -150,4 +150,73 @@ public class TheNextBigThingInterfaceTests
         ShippedCacheBuilder.AddInstall(TheNextBigThingTests.TnbtSteamDir);
         Assert.Equal(0, ShippedCacheBuilder.AddInstall(TheNextBigThingTests.TnbtSteamDir));
     }
+
+    [Fact]
+    public void RealInstall_Tnbt_VisemeLipSyncArchive()
+    {
+        string path = Path.Combine(TheNextBigThingTests.TnbtSteamDir, "Resource", "RESOURCE.004");
+        if (!File.Exists(path)) return;
+
+        byte[] bytes = File.ReadAllBytes(path);
+        Assert.Equal(526_654, bytes.Length);
+
+        List<ArchiveEntry> entries = VisemeArchive.ReadEntries(bytes, bytes.Length);
+        Assert.True(entries.Count > 0);
+        Assert.Equal(92000, (int)entries[0].Offset);
+        Assert.Equal(43, (int)entries[0].Size);
+
+        byte[] track0 = bytes.AsSpan((int)entries[0].Offset, (int)entries[0].Size).ToArray();
+        string text = VisemeArchive.ToText(track0);
+        Assert.NotEmpty(text);
+        Assert.True(track0.All(b => b <= 32)); // phoneme IDs
+
+        var vfs = VirtualFileSystem.Init(TheNextBigThingTests.TnbtSteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode lipSync = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.LipSyncFolder);
+        FsNode? r004 = lipSync.Children.FirstOrDefault(c => c.Name == "RESOURCE.004");
+        Assert.NotNull(r004);
+        Assert.Equal(entries.Count, r004.Children.Count);
+    }
+
+    [Fact]
+    public void SyntheticTnbt_VisemeLipSyncArchive()
+    {
+        byte[] track0 = [0, 2, 4, 8, 10, 12, 14, 16];
+        byte[] track1 = [0, 4, 8, 16, 0];
+        byte[] archive = SyntheticArchives.VisemesR3([track0, track1]);
+        List<ArchiveEntry> entries = VisemeArchive.ReadEntries(archive, archive.Length);
+        Assert.Equal(2, entries.Count);
+        Assert.Equal(92000, (int)entries[0].Offset);
+        Assert.Equal(track0.Length, (int)entries[0].Size);
+        Assert.Equal(92000 + track0.Length, (int)entries[1].Offset);
+        Assert.Equal(track1.Length, (int)entries[1].Size);
+
+        string text = VisemeArchive.ToText(archive.AsSpan((int)entries[0].Offset, (int)entries[0].Size));
+        Assert.Equal("0\n2\n4\n8\n10\n12\n14\n16\n", text);
+    }
+
+    [Fact]
+    public void RealInstall_Tnbt_ResourceIfz()
+    {
+        string path = Path.Combine(TheNextBigThingTests.TnbtSteamDir, "Resource", "RESOURCE.IFZ");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(fs);
+        Assert.NotEmpty(entries);
+        Assert.Equal(95, entries.Count);
+
+        var vfs = VirtualFileSystem.Init(TheNextBigThingTests.TnbtSteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.GlobalFolder);
+        FsNode? ifz = global.Children.FirstOrDefault(c => c.Name == "RESOURCE.IFZ");
+        Assert.NotNull(ifz);
+        Assert.Equal("User Interface & HUD (RESOURCE.IFZ)", ifz.FriendlyName);
+        Assert.Equal(95, ifz.Children.Count);
+
+        var backgrounds = ifz.Children.Where(c => c.Kind == EntryKind.Background).ToList();
+        Assert.NotEmpty(backgrounds);
+        Assert.All(backgrounds, b => Assert.True(b.Image?.Width > 0 && b.Image?.Height > 0));
+
+        vfs.ApplyLanguage("es");
+        Assert.Equal("Interfaz de usuario y menús (RESOURCE.IFZ)", ifz.FriendlyName);
+    }
 }

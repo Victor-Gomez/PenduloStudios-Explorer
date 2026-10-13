@@ -32,6 +32,28 @@ public readonly record struct CharacterFrameRecord(
 }
 
 /// <summary>
+/// What a frame record's box and counts describe.
+/// <para>
+/// <see cref="Body"/> -- the library entries and the actor's walk cycles -- is a frame drawn on its own:
+/// the record states the frame's extent and its coverage runs number
+/// <see cref="CharacterFrameRecord.EdgeRunCount"/>. <see cref="HeadPatch"/> -- the talking heads of
+/// <c>RESOURCE.000</c>, which are painted over a walk frame rather than drawn on their own -- carries the
+/// box and anchor of the <em>body</em> underneath, so the patch's own extent has to be measured from its
+/// runs, and only <see cref="CharacterFrameRecord.EdgeCountB"/> counts its coverage. That is how the
+/// engine reads it too (<c>docs/formats/executable.md</c>), and it holds in all 1,440 head frames of the
+/// game; what <see cref="CharacterFrameRecord.EdgeCountA"/> means there is unexplained.
+/// </para>
+/// </summary>
+public enum CharacterSpriteGeometry
+{
+    /// <summary>A frame drawn on its own, whose record describes it.</summary>
+    Body,
+
+    /// <summary>A head painted over a body frame, whose record describes that body.</summary>
+    HeadPatch,
+}
+
+/// <summary>
 /// One entry of <em>Runaway 1</em>'s character sprite library (<c>Resource.001</c>): a short animation
 /// of one character, as palette-indexed runs behind a 32-byte frame record. A different container and a
 /// different codec from the scene archives' <see cref="SpriteAsset"/>, which is why it has its own class.
@@ -93,29 +115,38 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
 
     private readonly byte[] _data;
     private readonly int _dataStart;
-    private readonly (int X, int Y)[] _origins;
+    private readonly (int X, int Y, int Width, int Height)[] _boxes;
+    private readonly CharacterSpriteGeometry _geometry;
+    private readonly int _bytesPerPixel;
 
     private CharacterSpriteAsset(
         byte[] data,
         int dataStart,
         IReadOnlyList<CharacterFrameRecord> records,
-        (int X, int Y)[] origins)
+        (int X, int Y, int Width, int Height)[] boxes,
+        CharacterSpriteGeometry geometry,
+        int bytesPerPixel = 1)
     {
         _data = data;
         _dataStart = dataStart;
         Records = records;
-        _origins = origins;
+        _boxes = boxes;
+        _geometry = geometry;
+        _bytesPerPixel = bytesPerPixel;
 
         int x0 = int.MaxValue, y0 = int.MaxValue, x1 = 0, y1 = 0;
-        for (int i = 0; i < records.Count; i++)
+        for (int i = 0; i < boxes.Length; i++)
         {
-            x0 = Math.Min(x0, origins[i].X);
-            y0 = Math.Min(y0, origins[i].Y);
-            x1 = Math.Max(x1, origins[i].X + records[i].Width);
-            y1 = Math.Max(y1, origins[i].Y + records[i].Height);
+            x0 = Math.Min(x0, boxes[i].X);
+            y0 = Math.Min(y0, boxes[i].Y);
+            x1 = Math.Max(x1, boxes[i].X + boxes[i].Width);
+            y1 = Math.Max(y1, boxes[i].Y + boxes[i].Height);
         }
         Bounds = records.Count == 0 ? (0, 0, 0, 0) : (x0, y0, x1 - x0, y1 - y0);
     }
+
+    /// <summary>Bytes per pixel in the body stream (1 for Runaway 1 indexed palette, 2 for Runaway 2 RGB565).</summary>
+    public int BytesPerPixel => _bytesPerPixel;
 
     /// <summary>The frame records, in order, with the unused tail of the table dropped.</summary>
     public IReadOnlyList<CharacterFrameRecord> Records { get; }
@@ -129,7 +160,14 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
     public IndexedPalette? Palette { get; set; }
 
     /// <summary>Where frame <paramref name="index"/>'s extent sits on the canvas.</summary>
-    public (int X, int Y) OriginOf(int index) => _origins[index];
+    public (int X, int Y) OriginOf(int index) => (_boxes[index].X, _boxes[index].Y);
+
+    /// <summary>
+    /// Frame <paramref name="index"/>'s own box on the canvas. For a head patch this is measured from
+    /// the runs, because the record's width and height are the body's -- see
+    /// <see cref="CharacterSpriteGeometry"/>.
+    /// </summary>
+    public (int X, int Y, int Width, int Height) BoxOf(int index) => _boxes[index];
 
     /// <summary>
     /// Parses one library entry: the 3,200-byte frame table followed by its frame data.
@@ -140,7 +178,7 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
     /// union of the frames' extents and the extents are not stored.
     /// </para>
     /// </summary>
-    public static CharacterSpriteAsset? Parse(byte[] data)
+    public static CharacterSpriteAsset? Parse(byte[] data, int bytesPerPixel = 1)
     {
         ArgumentNullException.ThrowIfNull(data);
         if (data.Length <= FrameTableSize)
@@ -155,29 +193,81 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
             records.Add(r);
         }
 
+        return Build(data, FrameTableSize, records, CharacterSpriteGeometry.Body, bytesPerPixel);
+    }
+
+    /// <summary>
+    /// Parses one animation whose frame table is not in front of its data: the actor's walk cycles and
+    /// talking heads, whose records are a row of a table slot of <c>RESOURCE.000</c> and whose runs are a
+    /// slot of their own (see <c>docs/formats/global-data.md</c>). The codec is the one above; what
+    /// differs is where the records live, and, for a head, what its record describes.
+    /// <para>
+    /// <paramref name="table"/> starts at the animation's first record, and <paramref name="data"/> is
+    /// exactly the run slot, because the last frame runs to the end of it.
+    /// </para>
+    /// </summary>
+    public static CharacterSpriteAsset? Parse(
+        ReadOnlySpan<byte> table,
+        int frameCount,
+        byte[] data,
+        CharacterSpriteGeometry geometry,
+        int bytesPerPixel = 1)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (frameCount <= 0 || table.Length < frameCount * RecordSize)
+            return null;
+
+        var records = new List<CharacterFrameRecord>(frameCount);
+        for (int i = 0; i < frameCount; i++)
+            records.Add(ReadRecord(table, i * RecordSize));
+
+        return Build(data, 0, records, geometry, bytesPerPixel);
+    }
+
+    /// <summary>
+    /// Validates the records against the run data and measures every frame's box. The tiling is the
+    /// format test in both containers: each frame's two streams must fill the space between its own
+    /// <c>DataOffset</c> and the next frame's exactly.
+    /// </summary>
+    private static CharacterSpriteAsset? Build(
+        byte[] data,
+        int dataStart,
+        List<CharacterFrameRecord> records,
+        CharacterSpriteGeometry geometry,
+        int bytesPerPixel = 1)
+    {
         if (records.Count == 0 || records[0].DataOffset != 0)
             return null;
 
-        int dataLength = data.Length - FrameTableSize;
-        var origins = new (int X, int Y)[records.Count];
+        int dataLength = data.Length - dataStart;
+        var boxes = new (int X, int Y, int Width, int Height)[records.Count];
         for (int i = 0; i < records.Count; i++)
         {
             CharacterFrameRecord r = records[i];
             int end = i + 1 < records.Count ? records[i + 1].DataOffset : dataLength;
-            if (r.Width <= 0 || r.Height <= 0 || r.DataOffset < 0 || end <= r.DataOffset || end > dataLength)
+            if (r.DataOffset < 0 || end <= r.DataOffset || end > dataLength)
                 return null;
-            if (!TryWalk(data, FrameTableSize, r, end, out origins[i]))
+            if (geometry == CharacterSpriteGeometry.Body && (r.Width <= 0 || r.Height <= 0))
+                return null;
+            if (!TryWalk(data, dataStart, r, end, geometry, bytesPerPixel, out boxes[i]))
                 return null;
         }
 
-        return new CharacterSpriteAsset(data, FrameTableSize, records, origins);
+        return new CharacterSpriteAsset(data, dataStart, records, boxes, geometry, bytesPerPixel);
     }
+
+    /// <summary>
+    /// How many coverage runs frame <paramref name="r"/> promises, which depends on what its record
+    /// describes -- see <see cref="CharacterSpriteGeometry"/>.
+    /// </summary>
+    private static int CoverageRunsOf(CharacterFrameRecord r, CharacterSpriteGeometry geometry) =>
+        geometry == CharacterSpriteGeometry.HeadPatch ? r.EdgeCountB : r.EdgeRunCount;
 
     /// <summary>
     /// A cheap gate for the classifier: could <paramref name="head"/> be the start of a library entry?
     /// Frame 0's record starts at zero and names a non-empty frame that fits inside the entry.
     /// </summary>
-    public static bool CouldBeEntry(ReadOnlySpan<byte> head, long totalSize)
+    public static bool CouldBeEntry(ReadOnlySpan<byte> head, long totalSize, int bytesPerPixel = 1)
     {
         if (head.Length < RecordSize || totalSize <= FrameTableSize)
             return false;
@@ -188,7 +278,7 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
             && r.EdgeRunCount > 0
             && r.Width is > 0 and <= 4096
             && r.Height is > 0 and <= 4096
-            && (long)r.BodyRunCount * BodyRunHeader + (long)r.EdgeRunCount * CoverageRunHeader <= totalSize - FrameTableSize;
+            && (long)r.BodyRunCount * (BodyRunHeader + bytesPerPixel) + (long)r.EdgeRunCount * CoverageRunHeader <= totalSize - FrameTableSize;
     }
 
     /// <summary>
@@ -206,15 +296,14 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
             throw new ArgumentOutOfRangeException(nameof(index));
 
         CharacterFrameRecord r = Records[index];
-        (int ox, int oy) = _origins[index];
-        int w = r.Width, h = r.Height;
+        (int ox, int oy, int w, int h) = _boxes[index];
 
         IndexedPalette palette = Palette ?? IndexedPalette.Grayscale;
         var coverage = new byte[w * h];
         var pixels = new byte[w * h * 4];
         var painted = new bool[w * h];
 
-        int bodyEnd = ReadBody(_data, _dataStart + r.DataOffset, r.BodyRunCount, (x, y, src, count) =>
+        int bodyEnd = ReadBody(_data, _dataStart + r.DataOffset, r.BodyRunCount, _bytesPerPixel, (x, y, src, count) =>
         {
             int row = y - oy;
             if (row < 0 || row >= h)
@@ -225,7 +314,10 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
                 if (col < 0 || col >= w)
                     continue;
                 int p = row * w + col;
-                palette.ToBgra(_data[src + i], pixels, p * 4);
+                if (_bytesPerPixel == 2)
+                    Rgb565.ToBgra(BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(src + i * 2)), pixels, p * 4);
+                else
+                    palette.ToBgra(_data[src + i], pixels, p * 4);
                 painted[p] = true;
             }
         });
@@ -274,14 +366,14 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
         for (int i = 0; i < Records.Count; i++)
         {
             CharacterFrameRecord r = Records[i];
-            (int ox, int oy) = _origins[i];
+            (int ox, int oy, int bw, int bh) = _boxes[i];
             int frameEnd = i + 1 < Records.Count ? _dataStart + Records[i + 1].DataOffset : _data.Length;
 
             int maxX = 0, maxY = 0, runs = 0;
             int bodyEnd;
             try
             {
-                bodyEnd = ReadBody(_data, _dataStart + r.DataOffset, r.BodyRunCount, (x, y, _, count) =>
+                bodyEnd = ReadBody(_data, _dataStart + r.DataOffset, r.BodyRunCount, _bytesPerPixel, (x, y, _, count) =>
                 {
                     maxX = Math.Max(maxX, x + count);
                     maxY = Math.Max(maxY, y);
@@ -300,10 +392,19 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
                 return $"frame {i}: a run reads past the end of the entry";
             }
 
-            if (runs != r.EdgeRunCount)
-                return $"frame {i}: {runs} coverage runs, record says {r.EdgeRunCount}";
-            if (maxX - ox != r.Width || maxY - oy + 1 != r.Height)
-                return $"frame {i}: runs span {maxX - ox}x{maxY - oy + 1}, record says {r.Width}x{r.Height}";
+            int wantRuns = CoverageRunsOf(r, _geometry);
+            if (runs != wantRuns)
+                return $"frame {i}: {runs} coverage runs, record says {wantRuns}";
+            if (maxX - ox != bw || maxY - oy + 1 != bh)
+                return $"frame {i}: runs span {maxX - ox}x{maxY - oy + 1}, box is {bw}x{bh}";
+
+            // A head patch's record carries the body's box and anchor, so neither the declared extent
+            // nor a fixed foot position says anything about the patch itself.
+            if (_geometry == CharacterSpriteGeometry.HeadPatch)
+                continue;
+
+            if (bw != r.Width || bh != r.Height)
+                return $"frame {i}: box is {bw}x{bh}, record says {r.Width}x{r.Height}";
 
             (int X, int Y) here = (ox + r.AnchorX, oy + r.AnchorY);
             feet ??= here;
@@ -324,7 +425,7 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
         (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(p + 28)));
 
     /// <summary>Walks <paramref name="count"/> body runs from <paramref name="p"/>; returns where they end.</summary>
-    private static int ReadBody(byte[] data, int p, int count, Action<int, int, int, int> run)
+    private static int ReadBody(byte[] data, int p, int count, int bytesPerPixel, Action<int, int, int, int> run)
     {
         for (int i = 0; i < count; i++)
         {
@@ -334,10 +435,11 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
             int y = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(p + 2));
             int n = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(p + 4));
             p += BodyRunHeader;
-            if (p + n > data.Length)
+            int payload = n * bytesPerPixel;
+            if (p + payload > data.Length)
                 throw new ArgumentOutOfRangeException(nameof(count));
             run(x, y, p, n);
-            p += n;
+            p += payload;
         }
         return p;
     }
@@ -367,29 +469,38 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
     /// Walks both streams of one frame without decoding pixels, to find its canvas origin and confirm
     /// they tile the frame exactly.
     /// </summary>
-    private static bool TryWalk(byte[] data, int dataStart, CharacterFrameRecord r, int end, out (int X, int Y) origin)
+    private static bool TryWalk(
+        byte[] data,
+        int dataStart,
+        CharacterFrameRecord r,
+        int end,
+        CharacterSpriteGeometry geometry,
+        int bytesPerPixel,
+        out (int X, int Y, int Width, int Height) box)
     {
-        origin = default;
-        int minX = int.MaxValue, minY = int.MaxValue;
-        void Seen(int x, int y)
+        box = default;
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = 0, maxY = 0;
+        void Seen(int x, int y, int count)
         {
             if (x < minX) minX = x;
             if (y < minY) minY = y;
+            if (x + count > maxX) maxX = x + count;
+            if (y > maxY) maxY = y;
         }
 
         try
         {
-            int bodyEnd = ReadBody(data, dataStart + r.DataOffset, r.BodyRunCount, (x, y, _, _) => Seen(x, y));
+            int bodyEnd = ReadBody(data, dataStart + r.DataOffset, r.BodyRunCount, bytesPerPixel, (x, y, _, n) => Seen(x, y, n));
             int frameEnd = dataStart + end;
             if (bodyEnd > frameEnd)
                 return false;
             int runs = 0;
-            int coverageEnd = ReadCoverage(data, bodyEnd, frameEnd, (x, y, _, _, _) =>
+            int coverageEnd = ReadCoverage(data, bodyEnd, frameEnd, (x, y, _, _, n) =>
             {
-                Seen(x, y);
+                Seen(x, y, n);
                 runs++;
             });
-            if (coverageEnd != frameEnd || runs != r.EdgeRunCount || minX == int.MaxValue)
+            if (coverageEnd != frameEnd || runs != CoverageRunsOf(r, geometry) || minX == int.MaxValue)
                 return false;
         }
         catch (ArgumentOutOfRangeException)
@@ -397,7 +508,11 @@ public sealed class CharacterSpriteAsset : IAnimationAsset
             return false;
         }
 
-        origin = (minX, minY);
-        return true;
+        // A body frame keeps the extent its record declares -- Verify is what checks the runs agree with
+        // it. A head patch has no declared extent of its own, so its box is the one just measured.
+        box = geometry == CharacterSpriteGeometry.HeadPatch
+            ? (minX, minY, maxX - minX, maxY - minY + 1)
+            : (minX, minY, r.Width, r.Height);
+        return box.Width > 0 && box.Height > 0;
     }
 }

@@ -97,7 +97,16 @@ public static class HollywoodScript
     /// are cutscene stages that are also scenes in its registry. Nothing decodes that is not a scene.
     /// </para>
     /// </summary>
-    public static List<Stage> ReadStages(Stream stream)
+    /// <summary>
+    /// Reads every stage that deciphers to text. Slots that are zero, out of range, or decipher to
+    /// something other than text are skipped: the offset table is mostly stale, so a structural check
+    /// alone would admit hundreds of false stages.
+    /// <para>
+    /// On Hollywood Monsters this yields 80 stages, 589 labels and 3,430 lines. On Runaway 1 this yields
+    /// 54 stages and 5,125 lines across all chapters, pairing 4,635 lines with their recorded voice clips.
+    /// </para>
+    /// </summary>
+    public static List<Stage> ReadStages(Stream stream, GameVersion gameVersion = GameVersion.HollywoodMonsters)
     {
         ArgumentNullException.ThrowIfNull(stream);
 
@@ -119,14 +128,14 @@ public static class HollywoodScript
             if (offset == 0 || offset + DescriptorTableSize + 3 > length)
                 continue;
 
-            if (ReadStage(stream, key, i, offset, length) is { } stage)
+            if (ReadStage(stream, key, i, offset, length, gameVersion) is { } stage)
                 stages.Add(stage);
         }
 
         return stages;
     }
 
-    private static Stage? ReadStage(Stream stream, byte[] key, int index, uint offset, long length)
+    private static Stage? ReadStage(Stream stream, byte[] key, int index, uint offset, long length, GameVersion gameVersion)
     {
         stream.Seek(offset + DescriptorTableSize, SeekOrigin.Begin);
         Span<byte> counts = stackalloc byte[3];
@@ -167,7 +176,7 @@ public static class HollywoodScript
         if (!anyText)
             return null;
 
-        Dictionary<int, int> voiceByTextId = ReadCueVoiceMap(stream, offset, length);
+        Dictionary<int, int> voiceByTextId = ReadCueVoiceMap(stream, offset, length, gameVersion);
 
         var labels = new List<Label>(smallCount);
         for (int r = 0; r < smallCount; r++)
@@ -187,21 +196,12 @@ public static class HollywoodScript
     /// <summary>
     /// Builds text id -&gt; voice clip id from the stage's cue descriptors.
     /// <para>
-    /// Only frame 0 of each cue row is read. A row is one utterance and its later frames are
-    /// continuations, so the grid is densely populated with records that name a line without being the
-    /// cue that plays it: scanning all 20,000 records raises apparent coverage from 42% to 92% but makes
-    /// two thirds of the lines ambiguous (197,660 records disagree with an earlier record about the same
-    /// line, and no majority emerges -- every candidate is attested exactly once). At frame 0 the mapping
-    /// is near-unique instead: of 2,369 distinct line ids cued there across the shipped game, only 196
-    /// carry more than one voice id, and the ids advance in lockstep with the recordings
-    /// (line 500 -&gt; clip 2227, 501 -&gt; 2228, 502 -&gt; 2229 in stage 101).
-    /// </para>
-    /// <para>
-    /// The result is that a little under half the lines get a clip and the rest get none. That is the
-    /// intended trade: an unlinked line is obvious, a line linked to the wrong recording is not.
+    /// For Hollywood Monsters, only frame 0 of each cue row is read to avoid continuation-frame noise.
+    /// For Runaway 1, rows contain sequential utterances across columns terminated by 0 or 0xFFFF,
+    /// with continuation counts (cues[p + 2]) expanding to consecutive lines and voice clips.
     /// </para>
     /// </summary>
-    private static Dictionary<int, int> ReadCueVoiceMap(Stream stream, uint offset, long length)
+    private static Dictionary<int, int> ReadCueVoiceMap(Stream stream, uint offset, long length, GameVersion gameVersion)
     {
         var map = new Dictionary<int, int>();
         if (offset + DescriptorTableSize > length)
@@ -210,6 +210,33 @@ public static class HollywoodScript
         stream.Seek(offset, SeekOrigin.Begin);
         var cues = new byte[DescriptorTableSize];
         stream.ReadExactly(cues);
+
+        if (gameVersion == GameVersion.Runaway1)
+        {
+            for (int r = 0; r < 200; r++)
+            {
+                for (int col = 0; col < 100; col++)
+                {
+                    int p = (r * 100 + col) * CueRecordSize;
+                    ushort textId = BinaryPrimitives.ReadUInt16LittleEndian(cues.AsSpan(p));
+                    if (textId == 0 || textId == 0xFFFF)
+                        break;
+
+                    byte cont = cues[p + 2];
+                    ushort voiceId = BinaryPrimitives.ReadUInt16LittleEndian(cues.AsSpan(p + 3));
+
+                    if (textId >= LargeRowBaseId && voiceId > 0)
+                    {
+                        int span = Math.Max(1, (int)cont);
+                        for (int k = 0; k < span; k++)
+                        {
+                            map.TryAdd(textId + k, voiceId + k);
+                        }
+                    }
+                }
+            }
+            return map;
+        }
 
         int records = DescriptorTableSize / CueRecordSize;
         for (int record = 0; record < records; record += StageCueStride)

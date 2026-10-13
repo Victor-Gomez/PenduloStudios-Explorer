@@ -367,7 +367,7 @@ public class VirtualFileSystemTests
         Assert.Equal("Scenes", scenes.DisplayName);
 
         FsNode h09 = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.H09")!;
-        Assert.Contains("Hospital Desk & Nightstand", h09.DisplayName);
+        Assert.Contains("Douglasville: Mamá Dorita's House", h09.DisplayName);
 
         FsNode e00 = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.H09\\e00")!;
         Assert.Equal("background 204×120 (e00)", e00.DisplayName);
@@ -376,7 +376,7 @@ public class VirtualFileSystemTests
         vfs.ApplyLanguage("es");
 
         Assert.Equal("Escenas", scenes.DisplayName);
-        Assert.Contains("Escritorio y mesita del hospital", h09.DisplayName);
+        Assert.Contains("Douglasville: Casa de Mamá Dorita", h09.DisplayName);
         Assert.Equal("fondo de escena 204×120 (e00)", e00.DisplayName);
     }
 }

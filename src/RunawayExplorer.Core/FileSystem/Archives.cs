@@ -136,6 +136,8 @@ public static class SceneArchive
             return false;
         if (code == "001" && game is GameVersion.Runaway1 or GameVersion.HollywoodMonsters)
             return false;
+        if (code == "B31" && game == GameVersion.Yesterday)
+            return false;
 
         return true;
     }
@@ -378,6 +380,184 @@ public static class CharacterSpriteArchive
         var table = new byte[TableEnd];
         archive.ReadExactly(table);
         return ReadEntries(table, archive.Length);
+    }
+}
+
+/// <summary>What an actor animation is: the legs that carry him, or the head that talks.</summary>
+public enum ActorRole
+{
+    /// <summary>One walk cycle, for one of the eight facings.</summary>
+    Walk,
+
+    /// <summary>One talking head, for one of the six head views.</summary>
+    Head,
+}
+
+/// <summary>
+/// One animation of the player character, named by the <c>RESOURCE.000</c> slot that holds its runs.
+/// Everything else about it -- which group it belongs to, where its records are, how many frames it has
+/// -- follows from that slot, which is why the tree can carry the slot alone and the loader can recover
+/// the rest (see <see cref="ActorArchive"/>).
+/// </summary>
+/// <param name="Group">The group's first slot: one of <see cref="ActorArchive.GroupSlots"/>.</param>
+/// <param name="Role">Whether this is a walk cycle or a talking head.</param>
+/// <param name="Index">The facing (0-7) for a walk cycle, or the head view (0-5) for a head.</param>
+public readonly record struct ActorAnimation(int Group, ActorRole Role, int Index)
+{
+    /// <summary>The slot holding this animation's run data.</summary>
+    public int DataSlot => Group + (Role == ActorRole.Walk
+        ? ActorArchive.WalkDataSlot + Index
+        : ActorArchive.HeadDataSlot + Index);
+
+    /// <summary>The slot holding the frame table this animation's records are a row of.</summary>
+    public int TableSlot => Group + (Role == ActorRole.Walk ? 0 : ActorArchive.HeadTableSlot);
+
+    /// <summary>How many frames it has: <see cref="ActorArchive.WalkFrames"/> or <see cref="ActorArchive.HeadFrames"/>.</summary>
+    public int FrameCount => Role == ActorRole.Walk ? ActorArchive.WalkFrames : ActorArchive.HeadFrames;
+
+    /// <summary>Where this animation's row starts inside <see cref="TableSlot"/>.</summary>
+    public int TableOffset => Index * FrameCount * CharacterSpriteAsset.RecordSize;
+
+    /// <summary>The slot holding the colour table the body indices resolve through.</summary>
+    public int PaletteSlot => Group + ActorArchive.PaletteSlot;
+
+    /// <summary>What a record of this animation describes -- a head's is the body's, not its own.</summary>
+    public CharacterSpriteGeometry Geometry =>
+        Role == ActorRole.Walk ? CharacterSpriteGeometry.Body : CharacterSpriteGeometry.HeadPatch;
+}
+
+/// <summary>
+/// The player character's own animations, which live in <c>RESOURCE.000</c> rather than in
+/// <see cref="CharacterSpriteArchive"/> with the rest of the cast.
+/// <para>
+/// They are the same codec, but laid out differently: a group of 17 consecutive slots holds one costume,
+/// and a frame's records are in a slot of their own rather than in front of its runs.
+/// </para>
+/// <code>
+/// g       walk frame table, 8 rows of 19 records       g+10..g+15  head run data, one slot per head
+/// g+1     palette, 256 RGB565 entries                  g+16        head frame table, 6 rows of 40
+/// g+2..g+9  walk run data, one slot per facing
+/// </code>
+/// <para>
+/// The six groups are at fixed slots. The executable picks one by the chapter and a key-light flag the
+/// room loader sets, so the pairs (10, 27), (44, 61) and (78, 95) are the same costume lit from opposite
+/// sides -- see <c>docs/formats/executable.md</c>. Nothing in the container says any of this; the
+/// grounds for reading it this way are that all six groups have exactly these slot sizes and that all
+/// 912 walk frames and 1,440 head frames tile their slots byte-exact, which
+/// <c>Runaway1ActorTests</c> checks against the shipped game.
+/// </para>
+/// </summary>
+public static class ActorArchive
+{
+    /// <summary>The first slot of each costume group, in the order the game uses them.</summary>
+    public static IReadOnlyList<int> GroupSlots { get; } = [10, 27, 44, 61, 78, 95];
+
+    /// <summary>How many consecutive slots one group occupies.</summary>
+    public const int SlotsPerGroup = 17;
+
+    /// <summary>The palette slot, relative to the group.</summary>
+    public const int PaletteSlot = 1;
+
+    /// <summary>The first walk run slot, relative to the group.</summary>
+    public const int WalkDataSlot = 2;
+
+    /// <summary>The first head run slot, relative to the group.</summary>
+    public const int HeadDataSlot = 10;
+
+    /// <summary>The head frame table, relative to the group.</summary>
+    public const int HeadTableSlot = 16;
+
+    /// <summary>Facings, and so walk run slots, per group.</summary>
+    public const int WalkDirections = 8;
+
+    /// <summary>Frames in one walk cycle.</summary>
+    public const int WalkFrames = 19;
+
+    /// <summary>Head views, and so head run slots, per group.</summary>
+    public const int Heads = 6;
+
+    /// <summary>Frames in one talking head.</summary>
+    public const int HeadFrames = 40;
+
+    /// <summary>Only <em>Runaway 1</em> lays its <c>RESOURCE.000</c> out this way.</summary>
+    public static bool IsActorArchive(string fileName, GameVersion game) =>
+        game == GameVersion.Runaway1 && string.Equals(fileName, "RESOURCE.000", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Every animation of every group, walk cycles before heads, in slot order.</summary>
+    public static IEnumerable<ActorAnimation> All()
+    {
+        foreach (int g in GroupSlots)
+        {
+            for (int d = 0; d < WalkDirections; d++)
+                yield return new ActorAnimation(g, ActorRole.Walk, d);
+            for (int h = 0; h < Heads; h++)
+                yield return new ActorAnimation(g, ActorRole.Head, h);
+        }
+    }
+
+    /// <summary>
+    /// The animation whose runs are in <paramref name="dataSlot"/>, or <see langword="null"/> when no
+    /// group claims that slot. This is how the loader recovers an animation from the slot the tree
+    /// remembers.
+    /// </summary>
+    public static ActorAnimation? FromDataSlot(int dataSlot)
+    {
+        foreach (int g in GroupSlots)
+        {
+            int k = dataSlot - g;
+            if (k >= WalkDataSlot && k < WalkDataSlot + WalkDirections)
+                return new ActorAnimation(g, ActorRole.Walk, k - WalkDataSlot);
+            if (k >= HeadDataSlot && k < HeadDataSlot + Heads)
+                return new ActorAnimation(g, ActorRole.Head, k - HeadDataSlot);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The frame records of <paramref name="animation"/>: one row of its group's frame table, read out
+    /// of <paramref name="archivePath"/>. <see langword="null"/> when the archive does not have the
+    /// slot, or the slot is too short to hold the row.
+    /// </summary>
+    public static byte[]? ReadFrameTable(string archivePath, ActorAnimation animation)
+    {
+        using FileStream f = File.OpenRead(archivePath);
+        ArchiveEntry? slot = GlobalArchive.ReadEntries(f, GameVersion.Runaway1)
+            .FirstOrDefault(e => e.Index == animation.TableSlot) is { Size: > 0 } found ? found : null;
+        if (slot is null)
+            return null;
+
+        int bytes = animation.FrameCount * CharacterSpriteAsset.RecordSize;
+        if (animation.TableOffset + bytes > slot.Value.Size)
+            return null;
+
+        var row = new byte[bytes];
+        f.Position = slot.Value.Offset + animation.TableOffset;
+        f.ReadExactly(row);
+        return row;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="entries"/> -- the live slots of a <c>RESOURCE.000</c> -- carry all six
+    /// groups at the sizes the layout requires: the two frame tables exactly, and a non-empty run slot
+    /// for every facing and every head. A group that fails this is skipped rather than guessed at.
+    /// </summary>
+    public static bool HasGroup(IReadOnlyDictionary<int, ArchiveEntry> entries, int group)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        if (!entries.TryGetValue(group, out ArchiveEntry walkTable)
+            || walkTable.Size != (long)WalkDirections * WalkFrames * CharacterSpriteAsset.RecordSize)
+            return false;
+        if (!entries.TryGetValue(group + HeadTableSlot, out ArchiveEntry headTable)
+            || headTable.Size != (long)Heads * HeadFrames * CharacterSpriteAsset.RecordSize)
+            return false;
+
+        for (int k = WalkDataSlot; k < WalkDataSlot + WalkDirections; k++)
+            if (!entries.TryGetValue(group + k, out ArchiveEntry e) || e.Size <= 0)
+                return false;
+        for (int k = HeadDataSlot; k < HeadDataSlot + Heads; k++)
+            if (!entries.TryGetValue(group + k, out ArchiveEntry e) || e.Size <= 0)
+                return false;
+        return true;
     }
 }
 
@@ -744,14 +924,58 @@ public static class VoiceArchive
             perShard[best].Add((k, offset));
         }
 
-        // A clip runs to the next clip in the same shard, and the last one to the shard's end.
+        // A clip runs to the next recording in the same shard, and the last one to the shard's end.
+        // The next recording is not always a clip the shard owns: some lines are stored in two shards,
+        // and the smaller offset wins above, but the other copy still bounds its neighbour. So every
+        // local value in a shard's table counts as a bound, i.e. any value that is not the slot's
+        // placeholder (the one most shards agree on). Without them Runaway 1's clip 2535 ran on
+        // through 5.4 MB of shard 4.
+        int lastLive = 0;
+        for (int s = 0; s < tables.Count; s++)
+            foreach ((int k, _) in perShard[s])
+                lastLive = Math.Max(lastLive, k);
+
+        var placeholder = new uint[lastLive + 1];
+        for (int k = 1; k <= lastLive; k++)
+        {
+            int bestVotes = 0;
+            for (int s = 0; s < tables.Count; s++)
+            {
+                int votes = 0;
+                for (int t = 0; t < tables.Count; t++)
+                    if (tables[t].Offsets[k] == tables[s].Offsets[k])
+                        votes++;
+                if (votes > bestVotes)
+                {
+                    bestVotes = votes;
+                    placeholder[k] = tables[s].Offsets[k];
+                }
+            }
+        }
+
         for (int s = 0; s < tables.Count; s++)
         {
             List<(int Index, uint Offset)> list = perShard[s];
-            for (int i = 0; i < list.Count; i++)
+            if (list.Count == 0)
+                continue;
+
+            var bounds = new List<uint>(list.Count);
+            foreach ((_, uint off) in list)
+                bounds.Add(off);
+            for (int k = 1; k <= lastLive; k++)
             {
-                (int k, uint off) = list[i];
-                long end = i + 1 < list.Count ? list[i + 1].Offset : tables[s].FileSize;
+                uint o = tables[s].Offsets[k];
+                if (o != placeholder[k] && o >= TableSize && o < tables[s].FileSize)
+                    bounds.Add(o);
+            }
+            bounds.Sort();
+
+            foreach ((int k, uint off) in list)
+            {
+                int next = bounds.BinarySearch(off + 1);
+                if (next < 0)
+                    next = ~next;
+                long end = next < bounds.Count ? bounds[next] : tables[s].FileSize;
                 if (end > off)
                     clips[k] = new VoiceClip(k, tables[s].Path, off, end - off);
             }

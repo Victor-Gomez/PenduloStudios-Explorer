@@ -28,7 +28,7 @@ public static class FontDecoder
 
     /// <summary>Which of the two record sizes a game uses.</summary>
     public static int RecordSizeFor(GameVersion game) =>
-        game is GameVersion.Runaway2 or GameVersion.Runaway3 ? RecordSizeLater : RecordSize;
+        game is GameVersion.Runaway2 or GameVersion.Runaway3 or GameVersion.TheNextBigThing or GameVersion.Yesterday ? RecordSizeLater : RecordSize;
 
     /// <summary>The last opaque shade. <c>0x00</c> is pure outline, <see cref="FillShade"/> pure fill.</summary>
     public const byte FillShade = 0x10;
@@ -152,4 +152,70 @@ public static class FontDecoder
 
         return image;
     }
+
+    /// <summary>
+    /// Renders every glyph of a 24-bit outlined font (as found in Yesterday's <c>RESOURCE.FNT</c>) onto one sheet.
+    /// Channel 0 and 2 encode outline alpha, channel 1 encodes fill alpha.
+    /// </summary>
+    public static DecodedImage DecodeRgb24(ReadOnlySpan<byte> bitmapRgb, IReadOnlyList<Glyph> glyphs, int maxWidth = 640)
+    {
+        int lineHeight = LineHeight(glyphs);
+        if (glyphs.Count == 0 || lineHeight == 0)
+            return DecodedImage.Transparent(0, 0);
+
+        var placed = new (int X, int Y, Glyph G)[glyphs.Count];
+        int x = 0, y = 0, used = 0;
+        for (int i = 0; i < glyphs.Count; i++)
+        {
+            Glyph g = glyphs[i];
+            if (x > 0 && x + g.Width > maxWidth)
+            {
+                x = 0;
+                y += lineHeight + 1;
+            }
+            placed[i] = (x, y, g);
+            x += g.Width + 1;
+            used = Math.Max(used, x);
+        }
+
+        var image = DecodedImage.Transparent(Math.Max(1, Math.Min(used, maxWidth)), y + lineHeight);
+        foreach ((int px, int py, Glyph g) in placed)
+        {
+            for (int row = 0; row < g.Height; row++)
+            {
+                int dy = py + g.Top + row;
+                if (dy < 0 || dy >= image.Height)
+                    continue;
+
+                for (int col = 0; col < g.Width; col++)
+                {
+                    int src = g.Offset + (row * g.Width + col) * 3;
+                    if (src + 2 >= bitmapRgb.Length)
+                        continue;
+
+                    int aOut = bitmapRgb[src];
+                    int aBody = bitmapRgb[src + 1];
+                    if (aOut == 0 && aBody == 0)
+                        continue;
+
+                    int aOutEff = (aOut * (255 - aBody)) / 255;
+                    int aTotal = Math.Clamp(aBody + aOutEff, 0, 255);
+                    byte rgb = aTotal > 0 ? (byte)((255 * aBody) / aTotal) : (byte)0;
+
+                    int dx = px + col;
+                    if (dx < 0 || dx >= image.Width)
+                        continue;
+
+                    int di = (dy * image.Width + dx) * 4;
+                    image.Pixels[di] = rgb;
+                    image.Pixels[di + 1] = rgb;
+                    image.Pixels[di + 2] = rgb;
+                    image.Pixels[di + 3] = (byte)aTotal;
+                }
+            }
+        }
+
+        return image;
+    }
 }
+

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using RunawayExplorer.Core.FileSystem;
 using RunawayExplorer.Core.Formats;
+using RunawayExplorer.Core.Metadata;
 using RunawayExplorer.Core.Settings;
 using Xunit;
 using static RunawayExplorer.Core.Tests.SyntheticAssets;
@@ -496,6 +497,77 @@ public class HollywoodMonstersInterfaceTests
     }
 
     [Fact]
+    public void RealInstall_Hm_InventoryItemIcons()
+    {
+        string path = Path.Combine(HmDir, "RESOURCE.000");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = GlobalArchive.ReadEntries(fs, GameVersion.HollywoodMonsters);
+        ArchiveEntry e43 = entries.Single(e => e.Index == 43);
+        Assert.Equal(516_096, e43.Size);
+        ArchiveEntry e49 = entries.Single(e => e.Index == 49);
+        Assert.Equal(240, e49.Size);
+
+        byte[] paletteBytes = new byte[e49.Size];
+        fs.Position = e49.Offset;
+        fs.ReadExactly(paletteBytes);
+        IndexedPalette? pal = IndexedPalette.TryParse(paletteBytes);
+        Assert.NotNull(pal);
+        Assert.Equal(80, pal.DefinedCount);
+
+        byte[] iconData = new byte[e43.Size];
+        fs.Position = e43.Offset;
+        fs.ReadExactly(iconData);
+        Assert.Equal(126 * 64 * 64, iconData.Length);
+        
+        // Check palette distribution
+        int under176 = 0, overOrEqual176 = 0;
+        foreach (byte b in iconData)
+        {
+            if (b == 0) continue; // transparent / background
+            if (b < 176) under176++;
+            else overOrEqual176++;
+        }
+        Assert.True(overOrEqual176 > 0 || under176 > 0);
+        Assert.True(under176 == 0, $"under176={under176}, overOrEqual176={overOrEqual176}");
+
+        var asset = new HollywoodItemIconsAsset(iconData)
+        {
+            Palette = IndexedPalette.Grayscale.WithTail(pal)
+        };
+        Assert.Equal(126, asset.FrameCount);
+        Assert.Equal((0, 0, 64, 64), asset.Bounds);
+        Assert.Null(asset.Verify());
+        SpriteFrame frame0 = asset.DecodeFrame(0);
+        Assert.NotNull(frame0.Image);
+        Assert.Equal(64, frame0.Image.Width);
+        Assert.Equal(64, frame0.Image.Height);
+
+        EntryClassification c = EntryClassifier.Classify(iconData, null, null, GameVersion.HollywoodMonsters);
+        Assert.Equal(EntryKind.Animation, c.Kind);
+        Assert.Equal(126, c.Image?.Frames);
+    }
+
+    [Fact]
+    public void Synthetic_Hm_InventoryItemIcons_DecodesAllFrames()
+    {
+        byte[] fakeData = new byte[HollywoodItemIconsAsset.TotalBytes];
+        // Populate frame 0 with some pixels
+        fakeData[0] = 180;
+        var asset = new HollywoodItemIconsAsset(fakeData);
+        Assert.Equal(126, asset.FrameCount);
+        Assert.Equal((0, 0, 64, 64), asset.Bounds);
+        Assert.Null(asset.Verify());
+
+        SpriteFrame f0 = asset.DecodeFrame(0);
+        Assert.NotNull(f0.Image);
+        Assert.Equal(64, f0.Image.Width);
+        Assert.Equal(64, f0.Image.Height);
+        Assert.Equal(4096 * 4, f0.Image.Pixels.Length);
+    }
+
+    [Fact]
     public void RealInstall_IsCoveredByTheShippedScanCache()
     {
         if (!Directory.Exists(HmDir)) return;
@@ -507,5 +579,399 @@ public class HollywoodMonstersInterfaceTests
         Assert.Equal(0, ShippedCacheBuilder.AddInstall(HmDir));
         Assert.True(ShippedCacheBuilder.Covers(Path.Combine(HmDir, "RESOURCE.000")),
             "The global archive should be in the shipped cache: classifying it cold is the slowest part of a first launch");
+    }
+
+    [Fact]
+    public void RealInstall_HmScript_LoadsAllStagesAndLines()
+    {
+        string path = Path.Combine(HmDir, "RESOURCE.003");
+        if (!File.Exists(path)) return;
+
+        using FileStream f = File.OpenRead(path);
+        List<HollywoodScript.Stage> stages = HollywoodScript.ReadStages(f, GameVersion.HollywoodMonsters);
+        Assert.Equal(80, stages.Count);
+        Assert.Equal(589, stages.Sum(s => s.Labels.Count));
+        Assert.Equal(3430, stages.Sum(s => s.Lines.Count));
+    }
+
+    [Fact]
+    public void RealInstall_Hm_ResourceI04_WorldMapMask()
+    {
+        string path = Path.Combine(HmDir, "RESOURCE.I04");
+        if (!File.Exists(path)) return;
+
+        byte[] fileBytes = File.ReadAllBytes(path);
+        List<ArchiveEntry> entries = SceneArchive.ReadEntries(fileBytes, fileBytes.Length);
+        Assert.True(entries.Count > 7);
+        ArchiveEntry chunk7 = entries[7];
+        Assert.Equal(3909, chunk7.Size);
+        byte[] data = fileBytes.AsSpan((int)chunk7.Offset, (int)chunk7.Size).ToArray();
+        MaskInfo? info = RleMaskDecoder.Detect(data, 1024, 480);
+        Assert.NotNull(info);
+        Assert.Equal(1024, info.Value.Width);
+        Assert.Equal(480, info.Value.Height);
+
+        MaskInfo? autoInfo = RleMaskDecoder.Detect(data);
+        Assert.NotNull(autoInfo);
+        Assert.Equal(1024, autoInfo.Value.Width);
+        Assert.Equal(480, autoInfo.Value.Height);
+
+        EntryClassification classification = EntryClassifier.Classify(data, null, null, GameVersion.HollywoodMonsters);
+        Assert.Equal(EntryKind.Mask, classification.Kind);
+    }
+
+    [Fact]
+    public void TravelScreenTiles_DetectAndClassifyAs200x93()
+    {
+        var tileBytes = new byte[200 * 93];
+        RasterInfo? info = RasterDecoder.DetectIndexed(tileBytes);
+        Assert.NotNull(info);
+        Assert.Equal(200, info.Value.Width);
+        Assert.Equal(93, info.Value.Height);
+
+        EntryClassification c = EntryClassifier.Classify(tileBytes, null, null, GameVersion.HollywoodMonsters);
+        Assert.Equal(EntryKind.Background, c.Kind);
+        Assert.Equal(200, c.Image!.Width);
+        Assert.Equal(93, c.Image.Height);
+
+        // Verify label formatting
+        var node = new FsNode
+        {
+            Name = "e02",
+            EntryIndex = 2,
+            Kind = EntryKind.Background,
+            ArchivePath = "RESOURCE.I04",
+            Image = new ImageInfo { Width = 200, Height = 93 },
+        };
+        Assert.Equal("travel destination tile 1 200×93 (e02)", SceneCatalog.FormatSceneEntryLabel(node, "en"));
+        Assert.Equal("miniatura de destino 1 200×93 (e02)", SceneCatalog.FormatSceneEntryLabel(node, "es"));
+    }
+
+    [Fact]
+    public void RealInstall_Hm_ResourceI04_TravelTiles()
+    {
+        string path = Path.Combine(HmDir, "RESOURCE.I04");
+        if (!File.Exists(path)) return;
+
+        byte[] fileBytes = File.ReadAllBytes(path);
+        List<ArchiveEntry> entries = SceneArchive.ReadEntries(fileBytes, fileBytes.Length);
+        Assert.True(entries.Count >= 7);
+
+        for (int i = 2; i <= 6; i++)
+        {
+            ArchiveEntry tileEntry = entries[i];
+            Assert.Equal(200 * 93, tileEntry.Size);
+            byte[] data = fileBytes.AsSpan((int)tileEntry.Offset, (int)tileEntry.Size).ToArray();
+            RasterInfo? info = RasterDecoder.DetectIndexed(data);
+            Assert.NotNull(info);
+            Assert.Equal(200, info.Value.Width);
+            Assert.Equal(93, info.Value.Height);
+        }
+    }
+
+    [Fact]
+    public void BottomActionPanel_DetectAndClassifyAs1024x189()
+    {
+        var panelBytes = new byte[1024 * 189];
+        RasterInfo? info = RasterDecoder.DetectIndexed(panelBytes);
+        Assert.NotNull(info);
+        Assert.Equal(1024, info.Value.Width);
+        Assert.Equal(189, info.Value.Height);
+
+        EntryClassification c = EntryClassifier.Classify(panelBytes, null, null, GameVersion.HollywoodMonsters);
+        Assert.Equal(EntryKind.Background, c.Kind);
+        Assert.Equal(1024, c.Image!.Width);
+        Assert.Equal(189, c.Image.Height);
+    }
+
+    [Fact]
+    public void RealInstall_Hm_Resource000_Entries47And48()
+    {
+        string path = Path.Combine(HmDir, "RESOURCE.000");
+        if (!File.Exists(path)) return;
+
+        byte[] fileBytes = File.ReadAllBytes(path);
+        List<ArchiveEntry> entries = GlobalArchive.ReadEntries(fileBytes, fileBytes.Length, GameVersion.HollywoodMonsters);
+
+        ArchiveEntry e47 = entries.Single(e => e.Index == 47);
+        Assert.Equal(193_536, e47.Size); // 1024 * 189
+        byte[] d47 = fileBytes.AsSpan((int)e47.Offset, (int)e47.Size).ToArray();
+        RasterInfo? info47 = RasterDecoder.DetectIndexed(d47);
+        Assert.NotNull(info47);
+        Assert.Equal(1024, info47.Value.Width);
+        Assert.Equal(189, info47.Value.Height);
+
+        ArchiveEntry e48 = entries.Single(e => e.Index == 48);
+        Assert.Equal(28_800, e48.Size); // 640 * 45
+        byte[] d48 = fileBytes.AsSpan((int)e48.Offset, (int)e48.Size).ToArray();
+        RasterInfo? info48 = RasterDecoder.DetectIndexed(d48);
+        Assert.NotNull(info48);
+        Assert.Equal(640, info48.Value.Width);
+        Assert.Equal(45, info48.Value.Height);
+    }
+
+    [Fact]
+    public void AttributeTable1792_Parses7PagesCorrectly()
+    {
+        byte[] walk = new byte[256];
+        walk[10] = 1; walk[20] = 2;
+        byte[] items = new byte[256];
+        items[10] = 3; items[30] = 5;
+        byte[] depth = new byte[256];
+        depth[10] = 4;
+        byte[] delta = new byte[256];
+        delta[10] = 1;
+        byte[] adjust = new byte[256];
+        adjust[10] = 2;
+        byte[] footstep = new byte[256];
+        footstep[10] = 7;
+        byte[] remap = new byte[256];
+        remap[10] = 15;
+
+        byte[] tableData = SyntheticAssets.HollywoodAttributeTable(walk, items, depth, delta, adjust, footstep, remap);
+        Assert.Equal(HollywoodAttributeTableDecoder.TotalBytes, tableData.Length);
+        Assert.True(HollywoodAttributeTableDecoder.IsAttributeTable(tableData));
+
+        HollywoodAttributeTable table = HollywoodAttributeTableDecoder.Parse(tableData);
+        Assert.Equal(1, table.GetWalkRegion(10));
+        Assert.Equal(2, table.GetWalkRegion(20));
+        Assert.Equal(3, table.GetSceneItem(10));
+        Assert.Equal(5, table.GetSceneItem(30));
+        Assert.Equal(4, table.GetActorDepthClass(10));
+        Assert.Equal(1, table.GetPaletteDeltaClass(10));
+        Assert.Equal(2, table.GetPaletteAdjustmentClass(10));
+        Assert.Equal(7, table.GetFootstepSound(10));
+        Assert.Equal(15, table.GetPresentationRemap(10));
+
+        var counts = table.NonZeroCount();
+        Assert.Equal(2, counts.Walk);
+        Assert.Equal(2, counts.Items);
+        Assert.Equal(1, counts.Depth);
+        Assert.Equal(1, counts.Light);
+        Assert.Equal(1, counts.Adjust);
+        Assert.Equal(1, counts.Footstep);
+        Assert.Equal(1, counts.Remap);
+
+        // Verify label formatting
+        var node = new FsNode { Name = "e03", Size = 1792, Kind = EntryKind.Data };
+        Assert.Equal("scene attribute lookup pages (7 pages) (e03)", SceneCatalog.FormatSceneEntryLabel(node, "en"));
+        Assert.Equal("páginas de atributos de escena (7 páginas) (e03)", SceneCatalog.FormatSceneEntryLabel(node, "es"));
+    }
+
+    [Fact]
+    public void SceneMetadata_ParsesItemsAndActionHandlers()
+    {
+        var items = new List<(short InterX, short InterY, short AppX, short AppY, byte Facing, ushort ActionHandlerId)>
+        {
+            (100, 200, 110, 210, 2, 401),
+            (300, 400, 310, 410, 4, 402),
+        };
+
+        byte[] metaData = SyntheticAssets.HollywoodSceneMetadata(items);
+        Assert.Equal(Formats.HollywoodSceneMetadata.MinSize, metaData.Length);
+        Assert.True(Formats.HollywoodSceneMetadata.IsSceneMetadata(metaData));
+
+        Formats.HollywoodSceneMetadata parsed = Formats.HollywoodSceneMetadata.Parse(metaData);
+        Assert.Equal(21, parsed.Items.Count);
+
+        HollywoodSceneItem item0 = parsed.Items[0];
+        Assert.Equal(100, item0.InteractionPoint.X);
+        Assert.Equal(200, item0.InteractionPoint.Y);
+        Assert.Equal(110, item0.ApproachPoint.X);
+        Assert.Equal(210, item0.ApproachPoint.Y);
+        Assert.Equal(2, item0.Facing);
+        Assert.Equal(8, item0.VerbActions.Count);
+        Assert.True(item0.VerbActions[0].HasHandler);
+        Assert.Equal(401, item0.VerbActions[0].ActionHandlerId);
+
+        HollywoodSceneItem item1 = parsed.Items[1];
+        Assert.Equal(300, item1.InteractionPoint.X);
+        Assert.Equal(400, item1.InteractionPoint.Y);
+        Assert.Equal(402, item1.VerbActions[0].ActionHandlerId);
+
+        // Verify label formatting
+        var node = new FsNode { Name = "e04", EntryIndex = 4, Size = 15000, Kind = EntryKind.Data };
+        Assert.Equal("scene metadata & interactions (e04)", SceneCatalog.FormatSceneEntryLabel(node, "en"));
+        Assert.Equal("metadatos y acciones de escena (e04)", SceneCatalog.FormatSceneEntryLabel(node, "es"));
+    }
+
+    [Fact]
+    public void FrankensteinReward_ValidatesFrameSequenceAndParts()
+    {
+        Assert.Equal(36, HollywoodFrankensteinReward.FrameCount);
+        Assert.Equal(3, HollywoodFrankensteinReward.PartCount);
+
+        Assert.Equal(0, HollywoodFrankensteinReward.GetFrameAtStep(0));
+        Assert.Equal(18, HollywoodFrankensteinReward.GetFrameAtStep(24));
+        Assert.Equal(0, HollywoodFrankensteinReward.GetFrameAtStep(35));
+
+        Assert.True(HollywoodFrankensteinReward.IsFrankensteinPart(0x30));
+        Assert.True(HollywoodFrankensteinReward.IsFrankensteinPart(0x42));
+        Assert.True(HollywoodFrankensteinReward.IsFrankensteinPart(0x4c));
+        Assert.False(HollywoodFrankensteinReward.IsFrankensteinPart(0x01));
+    }
+
+    [Fact]
+    public void RealInstall_ResidentSoundEffects()
+    {
+        string path = @"E:\Games\Juegos\Holywood Monsters\MONSTERS\Monsters\RESOURCE.000";
+        if (!File.Exists(path)) return;
+
+        byte[] bytes = File.ReadAllBytes(path);
+        List<ArchiveEntry> entries = GlobalArchive.ReadEntries(bytes, bytes.Length, GameVersion.HollywoodMonsters);
+        var resident = entries.Where(e => e.Index >= VirtualFileSystem.ResidentSoundFirstEntry && e.Index <= VirtualFileSystem.ResidentSoundLastEntry).ToList();
+        Assert.Equal(14, resident.Count);
+
+        // Check content equality
+        var sound0x55 = bytes.AsSpan((int)resident.First(e => e.Index == 0x55).Offset, (int)resident.First(e => e.Index == 0x55).Size).ToArray();
+        var sound0x59 = bytes.AsSpan((int)resident.First(e => e.Index == 0x59).Offset, (int)resident.First(e => e.Index == 0x59).Size).ToArray();
+        var sound0x5d = bytes.AsSpan((int)resident.First(e => e.Index == 0x5d).Offset, (int)resident.First(e => e.Index == 0x5d).Size).ToArray();
+        Assert.Equal(sound0x55, sound0x59);
+        Assert.Equal(sound0x55, sound0x5d);
+
+        var sound0x57 = bytes.AsSpan((int)resident.First(e => e.Index == 0x57).Offset, (int)resident.First(e => e.Index == 0x57).Size).ToArray();
+        var sound0x5a = bytes.AsSpan((int)resident.First(e => e.Index == 0x5a).Offset, (int)resident.First(e => e.Index == 0x5a).Size).ToArray();
+        var sound0x5e = bytes.AsSpan((int)resident.First(e => e.Index == 0x5e).Offset, (int)resident.First(e => e.Index == 0x5e).Size).ToArray();
+        var sound0x61 = bytes.AsSpan((int)resident.First(e => e.Index == 0x61).Offset, (int)resident.First(e => e.Index == 0x61).Size).ToArray();
+        Assert.Equal(sound0x57, sound0x5a);
+        Assert.Equal(sound0x57, sound0x5e);
+        Assert.Equal(sound0x57, sound0x61);
+
+        // Check sizes:
+        var sizes = resident.ToDictionary(e => e.Index, e => e.Size);
+        Assert.Equal(14, sizes.Count);
+        // Let's verify sizes of groups
+        Assert.Equal(sizes[0x55], sizes[0x59]);
+        Assert.Equal(sizes[0x55], sizes[0x5d]);
+        Assert.Equal(sizes[0x57], sizes[0x5a]);
+        Assert.Equal(sizes[0x57], sizes[0x5e]);
+        Assert.Equal(sizes[0x57], sizes[0x61]);
+    }
+
+    [Fact]
+    public void HollywoodCursorDecoder_DecodesFallbackDibsAndAnimates()
+    {
+        Assert.Equal(6, HollywoodCursorDecoder.FallbackDibs.Count);
+
+        for (int i = 0; i < HollywoodCursorDecoder.FallbackDibs.Count; i++)
+        {
+            byte[] dib = HollywoodCursorDecoder.FallbackDibs[i];
+            Assert.Equal(HollywoodCursorDecoder.DibByteSize, dib.Length);
+
+            DecodedImage img = HollywoodCursorDecoder.DecodeDib(dib, out int hx, out int hy);
+            Assert.Equal(32, img.Width);
+            Assert.Equal(32, img.Height);
+            Assert.Equal(16, hx);
+            Assert.Equal(16, hy);
+            Assert.Equal(32 * 32 * 4, img.Pixels.Length);
+
+            // Verify mix of transparent and opaque pixels
+            bool hasTransparent = false;
+            bool hasOpaque = false;
+            for (int p = 0; p < img.Pixels.Length; p += 4)
+            {
+                if (img.Pixels[p + 3] == 0) hasTransparent = true;
+                if (img.Pixels[p + 3] == 255) hasOpaque = true;
+            }
+            Assert.True(hasTransparent, $"Frame {i} should have transparent pixels");
+            Assert.True(hasOpaque, $"Frame {i} should have opaque pixels");
+        }
+
+        // Animated asset
+        HollywoodCursorAsset asset = HollywoodCursorDecoder.CreateFallbackAsset();
+        Assert.Equal(10, asset.FrameCount);
+        Assert.Equal((0, 0, 32, 32), asset.Bounds);
+        Assert.Equal(16, asset.HotspotX);
+        Assert.Equal(16, asset.HotspotY);
+        Assert.Null(asset.Verify());
+
+        for (int f = 0; f < 10; f++)
+        {
+            SpriteFrame frame = asset.DecodeFrame(f);
+            Assert.NotNull(frame.Image);
+            Assert.Equal(32, frame.Image.Width);
+            Assert.Equal(32, frame.Image.Height);
+        }
+
+        // APNG export test
+        using var ms = new MemoryStream();
+        ApngWriter.Write(asset, ms, 13.33);
+        Assert.True(ms.Length > 0);
+        byte[] apngBytes = ms.ToArray();
+        Assert.True(PngDecoder.IsPng(apngBytes));
+    }
+
+    [Fact]
+    public void HollywoodResidentSound_LabelsAndCanonicalNames()
+    {
+        Assert.Equal("Footstep (Wood A)", SceneCatalog.GetHollywoodResidentSoundName(0x55, "en"));
+        Assert.Equal("Pisada (Madera A)", SceneCatalog.GetHollywoodResidentSoundName(0x55, "es"));
+
+        Assert.Equal("Footstep (Stone A)", SceneCatalog.GetHollywoodResidentSoundName(0x57, "en"));
+        Assert.Equal("Pisada (Piedra A)", SceneCatalog.GetHollywoodResidentSoundName(0x57, "es"));
+
+        Assert.Equal("Door Latch / Click", SceneCatalog.GetHollywoodResidentSoundName(0x58, "en"));
+        Assert.Equal("Cerrojo / Clic", SceneCatalog.GetHollywoodResidentSoundName(0x58, "es"));
+
+        Assert.Equal("Inventory Open", SceneCatalog.GetHollywoodResidentSoundName(0x60, "en"));
+        Assert.Equal("Abrir inventario", SceneCatalog.GetHollywoodResidentSoundName(0x60, "es"));
+    }
+
+    [Fact]
+    public void SmackerVideo_ParsesHeader_Correctly()
+    {
+        byte[] smk4 = SyntheticSmackerVideo(width: 640, height: 480, frames: 150, fps: 15, smk4: true, audioSampleRate: 22050, is16Bit: true, stereo: false);
+        Assert.True(SmackerVideo.IsSmacker(smk4));
+
+        SmackerVideo? video = SmackerVideo.TryParse(smk4);
+        Assert.NotNull(video);
+        Assert.Equal("SMK4", video.Signature);
+        Assert.Equal(640, video.Width);
+        Assert.Equal(480, video.Height);
+        Assert.Equal(150, video.TotalFrames);
+        Assert.Equal(15.0, video.FramesPerSecond, 0.5);
+        Assert.Equal(10.0, video.DurationSeconds, 0.5);
+        Assert.Single(video.AudioTracks);
+        Assert.Equal(22050, video.AudioTracks[0].SampleRate);
+        Assert.Equal(16, video.AudioTracks[0].BitsPerSample);
+        Assert.Equal(1, video.AudioTracks[0].Channels);
+
+        string summary = video.FormatSummary();
+        Assert.Contains("640×480", summary);
+        Assert.Contains("22050 Hz", summary);
+
+        // Test SMK2
+        byte[] smk2 = SyntheticSmackerVideo(width: 320, height: 240, frames: 60, fps: 12, smk4: false);
+        Assert.True(SmackerVideo.IsSmacker(smk2));
+        SmackerVideo? v2 = SmackerVideo.TryParse(smk2);
+        Assert.NotNull(v2);
+        Assert.Equal("SMK2", v2.Signature);
+        Assert.Equal(320, v2.Width);
+        Assert.Equal(240, v2.Height);
+    }
+
+    [Fact]
+    public void VirtualFileSystem_DiscoversAndRestoresHollywoodMonstersSmackerVideo()
+    {
+        using var install = new FakeHmInstall();
+        // Add a Smacker video to the install root
+        byte[] smkBytes = SyntheticSmackerVideo(640, 480, 45, 15);
+        string smkPath = Path.Combine(install.Root, "Intro.smk");
+        File.WriteAllBytes(smkPath, smkBytes);
+
+        VirtualFileSystem vfs = VirtualFileSystem.Init(install.Root);
+        Assert.Equal(1, vfs.Summary.Videos);
+
+        FsNode videoFolder = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.VideoFolder);
+        FsNode videoNode = Assert.Single(videoFolder.Children, c => c.Name == "Intro.smk");
+        Assert.Equal(EntryKind.Video, videoNode.Kind);
+        Assert.NotNull(videoNode.Image);
+        Assert.Equal(640, videoNode.Image.Width);
+        Assert.Equal(480, videoNode.Image.Height);
+
+        using var ms = new MemoryStream();
+        Assert.True(vfs.RestoreVideo(videoNode, ms));
+        Assert.Equal(smkBytes.Length, ms.Length);
+        Assert.Equal(smkBytes, ms.ToArray());
     }
 }

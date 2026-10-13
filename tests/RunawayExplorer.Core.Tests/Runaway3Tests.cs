@@ -4,6 +4,7 @@ using RunawayExplorer.Core.Formats;
 using RunawayExplorer.Core.Metadata;
 using RunawayExplorer.Core.Settings;
 using Xunit;
+using static RunawayExplorer.Core.Tests.SyntheticAssets;
 
 namespace RunawayExplorer.Core.Tests;
 
@@ -64,6 +65,103 @@ public class Runaway3Tests
         BinaryPrimitives.WriteUInt16LittleEndian(u16, 2); ms.Write(u16);  // segCount = 2
 
         ms.Write(segData);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Builds a synthetic multi-frame Runaway 3 sprite exercising all segment flags:
+    /// - Frame 0: Flag 0 (RGB565, 2 bpp) and Flag 1 (RGB565 + 8-bit alpha, 3 bpp)
+    /// - Frame 1: Flag 6 (BGR 24-bit opaque, 3 bpp)
+    /// - Frame 2: Flag 7 (BGRA 32-bit straight alpha, 4 bpp)
+    /// </summary>
+    public static byte[] SyntheticSpriteR3MultiFrameAllFlags()
+    {
+        ushort frameCount = 3;
+        int headerSize = 2 + frameCount * 14;
+
+        Span<byte> u16 = stackalloc byte[2];
+        Span<byte> u32 = stackalloc byte[4];
+
+        // Frame 0 segments:
+        using var f0Segs = new MemoryStream();
+        // Seg 0: x=10, y=5, flag=0, count=2 -> 7 bytes header + 4 bytes pixels
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 10); f0Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 5); f0Segs.Write(u16);
+        f0Segs.WriteByte(0);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 2); f0Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 0xF800); f0Segs.Write(u16); // Red
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 0x07E0); f0Segs.Write(u16); // Green
+
+        // Seg 1: x=15, y=5, flag=1, count=1 -> 7 bytes header + 3 bytes pixels
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 15); f0Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 5); f0Segs.Write(u16);
+        f0Segs.WriteByte(1);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); f0Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 0x001F); f0Segs.Write(u16); // Blue
+        f0Segs.WriteByte(128); // Alpha 128
+        byte[] f0Data = f0Segs.ToArray();
+
+        // Frame 1 segments:
+        using var f1Segs = new MemoryStream();
+        // Seg 0: x=12, y=6, flag=6, count=3 -> 7 bytes header + 9 bytes (BGR * 3)
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 12); f1Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 6); f1Segs.Write(u16);
+        f1Segs.WriteByte(6);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 3); f1Segs.Write(u16);
+        // Pixel 0: B=20, G=40, R=60
+        f1Segs.WriteByte(20); f1Segs.WriteByte(40); f1Segs.WriteByte(60);
+        // Pixel 1: B=100, G=150, R=200
+        f1Segs.WriteByte(100); f1Segs.WriteByte(150); f1Segs.WriteByte(200);
+        // Pixel 2: B=255, G=250, R=245
+        f1Segs.WriteByte(255); f1Segs.WriteByte(250); f1Segs.WriteByte(245);
+        byte[] f1Data = f1Segs.ToArray();
+
+        // Frame 2 segments:
+        using var f2Segs = new MemoryStream();
+        // Seg 0: x=11, y=7, flag=7, count=2 -> 7 bytes header + 8 bytes (BGRA * 2)
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 11); f2Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 7); f2Segs.Write(u16);
+        f2Segs.WriteByte(7);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 2); f2Segs.Write(u16);
+        // Pixel 0: B=10, G=20, R=30, A=180
+        f2Segs.WriteByte(10); f2Segs.WriteByte(20); f2Segs.WriteByte(30); f2Segs.WriteByte(180);
+        // Pixel 1: B=50, G=60, R=70, A=220
+        f2Segs.WriteByte(50); f2Segs.WriteByte(60); f2Segs.WriteByte(70); f2Segs.WriteByte(220);
+        byte[] f2Data = f2Segs.ToArray();
+
+        using var ms = new MemoryStream();
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, frameCount); ms.Write(u16);
+
+        // Frame 0 record: fo = headerSize
+        uint fo0 = (uint)headerSize;
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, fo0); ms.Write(u32);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 10); ms.Write(u16); // x0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 16); ms.Write(u16); // x1 (x0 + w = 10 + 6)
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 5); ms.Write(u16);  // y0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 5); ms.Write(u16);  // y1
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 2); ms.Write(u16);  // segCount = 2
+
+        // Frame 1 record: fo = headerSize + f0Data.Length
+        uint fo1 = fo0 + (uint)f0Data.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, fo1); ms.Write(u32);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 12); ms.Write(u16); // x0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 15); ms.Write(u16); // x1 (x0 + w = 12 + 3)
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 6); ms.Write(u16);  // y0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 6); ms.Write(u16);  // y1
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);  // segCount = 1
+
+        // Frame 2 record: fo = fo1 + f1Data.Length
+        uint fo2 = fo1 + (uint)f1Data.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, fo2); ms.Write(u32);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 11); ms.Write(u16); // x0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 13); ms.Write(u16); // x1 (x0 + w = 11 + 2)
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 7); ms.Write(u16);  // y0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 7); ms.Write(u16);  // y1
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);  // segCount = 1
+
+        ms.Write(f0Data);
+        ms.Write(f1Data);
+        ms.Write(f2Data);
         return ms.ToArray();
     }
 
@@ -231,6 +329,85 @@ public class Runaway3Tests
     }
 
     [Fact]
+    public void SpriteDecoder_ParsesRunaway3MultiFrame_AllFlags()
+    {
+        byte[] spriteData = SyntheticSpriteR3MultiFrameAllFlags();
+        var asset = SpriteAsset.Parse(spriteData);
+
+        Assert.NotNull(asset);
+        Assert.True(asset.IsRunaway3);
+        Assert.Equal(3, asset.FrameCount);
+        Assert.Null(asset.Verify());
+
+        // Union bounds: X=10, Y=5, Width=6, Height=3
+        Assert.Equal(10, asset.Bounds.X);
+        Assert.Equal(5, asset.Bounds.Y);
+        Assert.Equal(6, asset.Bounds.Width);
+        Assert.Equal(3, asset.Bounds.Height);
+
+        // Frame 0: (Red pixel + Blue with alpha)
+        SpriteFrame f0 = asset.DecodeFrame(0);
+        Assert.NotNull(f0.Image);
+        Assert.Equal(6, f0.Image.Width);
+        Assert.Equal(1, f0.Image.Height);
+        Assert.Equal(10, f0.X);
+        Assert.Equal(5, f0.Y);
+        // Pixel 0 (Red)
+        Assert.True(f0.Image.Pixels[2] > 240); // R
+        Assert.Equal(255, f0.Image.Pixels[3]); // A
+        // Pixel 5 (Blue + alpha 128)
+        int px5 = 5 * 4;
+        Assert.True(f0.Image.Pixels[px5] > 240); // B
+        Assert.Equal(128, f0.Image.Pixels[px5 + 3]); // A
+
+        // Frame 1: Flag 6 (24-bit BGR opaque)
+        SpriteFrame f1 = asset.DecodeFrame(1);
+        Assert.NotNull(f1.Image);
+        Assert.Equal(3, f1.Image.Width);
+        Assert.Equal(1, f1.Image.Height);
+        Assert.Equal(12, f1.X);
+        Assert.Equal(6, f1.Y);
+        // Pixel 0 (BGR: 20, 40, 60, 255)
+        Assert.Equal(20, f1.Image.Pixels[0]);  // B
+        Assert.Equal(40, f1.Image.Pixels[1]);  // G
+        Assert.Equal(60, f1.Image.Pixels[2]);  // R
+        Assert.Equal(255, f1.Image.Pixels[3]); // A
+        // Pixel 1 (BGR: 100, 150, 200, 255)
+        Assert.Equal(100, f1.Image.Pixels[4]);
+        Assert.Equal(150, f1.Image.Pixels[5]);
+        Assert.Equal(200, f1.Image.Pixels[6]);
+        Assert.Equal(255, f1.Image.Pixels[7]);
+
+        // Frame 2: Flag 7 (32-bit BGRA with straight alpha)
+        SpriteFrame f2 = asset.DecodeFrame(2);
+        Assert.NotNull(f2.Image);
+        Assert.Equal(2, f2.Image.Width);
+        Assert.Equal(1, f2.Image.Height);
+        Assert.Equal(11, f2.X);
+        Assert.Equal(7, f2.Y);
+        // Pixel 0 (BGRA: 10, 20, 30, 180)
+        Assert.Equal(10, f2.Image.Pixels[0]);
+        Assert.Equal(20, f2.Image.Pixels[1]);
+        Assert.Equal(30, f2.Image.Pixels[2]);
+        Assert.Equal(180, f2.Image.Pixels[3]);
+        // Pixel 1 (BGRA: 50, 60, 70, 220)
+        Assert.Equal(50, f2.Image.Pixels[4]);
+        Assert.Equal(60, f2.Image.Pixels[5]);
+        Assert.Equal(70, f2.Image.Pixels[6]);
+        Assert.Equal(220, f2.Image.Pixels[7]);
+
+        // Export to APNG
+        using var apngMs = new MemoryStream();
+        ApngWriter.Write(asset, apngMs, 15);
+        byte[] apng = apngMs.ToArray();
+        Assert.NotEmpty(apng);
+        Assert.Equal(0x89, apng[0]);
+        Assert.Equal((byte)'P', apng[1]);
+        Assert.Equal((byte)'N', apng[2]);
+        Assert.Equal((byte)'G', apng[3]);
+    }
+
+    [Fact]
     public void ContinuousMaskDecoder_DetectsAndDecodes()
     {
         // 1280x720 image: 921,600 pixels total
@@ -335,7 +512,7 @@ public class Runaway3Tests
             byte[] e0Bytes = new byte[e0.Size];
             f.Position = e0.Offset;
             Assert.Equal(e0.Size, f.Read(e0Bytes));
-            var rasterInfo = RasterDecoder.Detect(e0Bytes);
+            var rasterInfo = RasterDecoder.Detect(e0Bytes, GameVersion.Runaway3);
             Assert.NotNull(rasterInfo);
             Assert.Equal(1508, rasterInfo.Value.Width);
             Assert.Equal(1540, rasterInfo.Value.Height);
@@ -364,7 +541,7 @@ public class Runaway3Tests
             byte[] e0Bytes = new byte[e0.Size];
             f.Position = e0.Offset;
             Assert.Equal(e0.Size, f.Read(e0Bytes));
-            var rasterInfo = RasterDecoder.Detect(e0Bytes);
+            var rasterInfo = RasterDecoder.Detect(e0Bytes, GameVersion.Runaway3);
             Assert.NotNull(rasterInfo);
             Assert.Equal(1280, rasterInfo.Value.Width);
             Assert.Equal(1440, rasterInfo.Value.Height);
@@ -491,6 +668,93 @@ public class Runaway3Tests
         Assert.Equal(239, asset.Bounds.Height);
         Assert.Equal(38, asset.FrameCount);
         Assert.Null(asset.Verify());
+    }
+
+    [Fact]
+    public void RealInstall_Runaway3_SceneSpriteAnimations()
+    {
+        if (!Directory.Exists(R3SteamDir)) return;
+
+        string resDir = Path.Combine(R3SteamDir, "Resource");
+        if (!Directory.Exists(resDir)) return;
+
+        // 1. RESOURCE.002: cutscene archive containing 2 character sprite animations (e12, e13)
+        string r002Path = Path.Combine(resDir, "RESOURCE.002");
+        if (File.Exists(r002Path))
+        {
+            using var f = File.OpenRead(r002Path);
+            var entries = SceneArchive.ReadEntries(f);
+            Assert.Equal(14, entries.Count);
+
+            int spriteCount = 0;
+            foreach (var entry in entries)
+            {
+                byte[] bytes = new byte[entry.Size];
+                f.Position = entry.Offset;
+                f.ReadExactly(bytes);
+
+                var asset = SpriteAsset.Parse(bytes);
+                if (asset is null) continue;
+
+                spriteCount++;
+                Assert.True(asset.IsRunaway3);
+                Assert.True(asset.FrameCount > 0);
+                Assert.Null(asset.Verify());
+
+                // Decode every frame
+                for (int i = 0; i < asset.FrameCount; i++)
+                {
+                    SpriteFrame sf = asset.DecodeFrame(i);
+                    if (!sf.IsEmpty)
+                    {
+                        Assert.True(sf.Image!.Width > 0);
+                        Assert.True(sf.Image.Height > 0);
+                        Assert.True(sf.X >= asset.Bounds.X);
+                        Assert.True(sf.Y >= asset.Bounds.Y);
+                    }
+                }
+
+                // APNG export
+                using var apngMs = new MemoryStream();
+                ApngWriter.Write(asset, apngMs, 15);
+                byte[] apng = apngMs.ToArray();
+                Assert.NotEmpty(apng);
+            }
+            Assert.Equal(2, spriteCount);
+        }
+
+        // 2. RESOURCE.D01: chapter 4 autopsy lab scene sprites (8 sprites out of 16 entries)
+        string d01Path = Path.Combine(resDir, "RESOURCE.D01");
+        if (File.Exists(d01Path))
+        {
+            using var f = File.OpenRead(d01Path);
+            var entries = SceneArchive.ReadEntries(f);
+
+            int spriteCount = 0;
+            foreach (var entry in entries)
+            {
+                if (entry.Size < 16) continue;
+                byte[] bytes = new byte[entry.Size];
+                f.Position = entry.Offset;
+                f.ReadExactly(bytes);
+
+                var asset = SpriteAsset.Parse(bytes);
+                if (asset != null)
+                {
+                    spriteCount++;
+                    Assert.True(asset.IsRunaway3);
+                    Assert.True(asset.FrameCount > 0);
+                    Assert.Null(asset.Verify());
+
+                    // Decode first and last frames
+                    var firstFrame = asset.DecodeFrame(0);
+                    var lastFrame = asset.DecodeFrame(asset.FrameCount - 1);
+                    Assert.True(firstFrame.Image != null || firstFrame.IsEmpty);
+                    Assert.True(lastFrame.Image != null || lastFrame.IsEmpty);
+                }
+            }
+            Assert.Equal(8, spriteCount);
+        }
     }
 
     [Fact]
@@ -644,4 +908,175 @@ public class Runaway3InterfaceTests
             Assert.Equal((w, h), (image.Width, image.Height));
         }
     }
+
+    [Fact]
+    public void SyntheticChapterInteractionArchive_ParsesCorrectly()
+    {
+        uint totalRecords = 3;
+        uint chapterCount = 2;
+        int headerBytes = 8 + 2 * 12; // 32 bytes
+
+        using var ms = new MemoryStream();
+        Span<byte> u32 = stackalloc byte[4];
+
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, totalRecords); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, chapterCount); ms.Write(u32);
+
+        // Ch 0: 2 records at offset 32
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 0); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 2); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, (uint)headerBytes); ms.Write(u32);
+
+        // Ch 1: 1 record at offset 32 + 2 * 220 = 472
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 1); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 1); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, (uint)(headerBytes + 2 * ChapterInteractionArchive.RecordSize)); ms.Write(u32);
+
+        // Record 0 (Ch 0, Sc 10, Obj 100, Act 1)
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 0); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 10); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 100); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 1); ms.Write(u32);
+        ms.Write(new byte[204]);
+
+        // Record 1 (Ch 0, Sc 10, Obj 101, Act 2)
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 0); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 10); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 101); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 2); ms.Write(u32);
+        ms.Write(new byte[204]);
+
+        // Record 2 (Ch 1, Sc 20, Obj 200, Act 3)
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 1); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 20); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 200); ms.Write(u32);
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, 3); ms.Write(u32);
+        ms.Write(new byte[204]);
+
+        byte[] dbBytes = ms.ToArray();
+        Assert.True(ChapterInteractionArchive.IsInteractionDatabase(dbBytes));
+
+        ChapterInteractionDatabase db = ChapterInteractionArchive.Parse(dbBytes);
+        Assert.Equal(2, db.Chapters.Count);
+        Assert.Equal(3, db.TotalRecords);
+
+        var ch0Recs = db.GetRecordsForChapter(0).ToList();
+        Assert.Equal(2, ch0Recs.Count);
+        Assert.Equal(10, ch0Recs[0].SceneId);
+        Assert.Equal(100, ch0Recs[0].ObjectId);
+        Assert.Equal(1, ch0Recs[0].ActionId);
+
+        var ch1Recs = db.GetRecordsForChapter(1).ToList();
+        Assert.Single(ch1Recs);
+        Assert.Equal(20, ch1Recs[0].SceneId);
+        Assert.Equal(200, ch1Recs[0].ObjectId);
+        Assert.Equal(3, ch1Recs[0].ActionId);
+
+        string summary = ChapterInteractionArchive.FormatSummary(db);
+        Assert.Contains("3 records across 2 chapters", summary);
+    }
+
+    [Fact]
+    public void RealInstall_Runaway3_ChapterInteractionDatabase()
+    {
+        if (!Directory.Exists(Runaway3Tests.R3SteamDir)) return;
+
+        string res005 = Path.Combine(Runaway3Tests.R3SteamDir, "Resource", "RESOURCE.005");
+        if (!File.Exists(res005)) return;
+
+        byte[] bytes = File.ReadAllBytes(res005);
+        Assert.Equal(478_152, bytes.Length);
+        Assert.True(ChapterInteractionArchive.IsInteractionDatabase(bytes));
+
+        ChapterInteractionDatabase db = ChapterInteractionArchive.Parse(bytes);
+        Assert.Equal(7, db.Chapters.Count);
+        Assert.Equal(2173, db.TotalRecords);
+
+        // Verify chapter counts
+        Assert.Equal(165, db.Chapters[0].RecordCount);
+        Assert.Equal(92, db.Chapters[0].Offset);
+
+        Assert.Equal(538, db.Chapters[1].RecordCount);
+        Assert.Equal(36392, db.Chapters[1].Offset);
+
+        Assert.Equal(574, db.Chapters[2].RecordCount);
+        Assert.Equal(154752, db.Chapters[2].Offset);
+
+        Assert.Equal(412, db.Chapters[3].RecordCount);
+        Assert.Equal(281032, db.Chapters[3].Offset);
+
+        Assert.Equal(311, db.Chapters[4].RecordCount);
+        Assert.Equal(371672, db.Chapters[4].Offset);
+
+        Assert.Equal(85, db.Chapters[5].RecordCount);
+        Assert.Equal(440092, db.Chapters[5].Offset);
+
+        Assert.Equal(88, db.Chapters[6].RecordCount);
+        Assert.Equal(458792, db.Chapters[6].Offset);
+
+        // Test VFS integration
+        var vfs = VirtualFileSystem.Init(Runaway3Tests.R3SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = Assert.Single(vfs.Root.Children, c => c.Name == VirtualFileSystem.GlobalFolder);
+        FsNode? res005Node = global.Children.FirstOrDefault(c => c.Name == "RESOURCE.005");
+        Assert.NotNull(res005Node);
+        Assert.Equal(7, res005Node.Children.Count);
+        Assert.All(res005Node.Children, ch => Assert.True(ch.Children.Count > 0));
+
+        // Test payload decryption on real game objects
+        Assert.Equal("URNA", db.Records[165].DecodedLabel);
+        Assert.Equal("GUANTE", db.Records[166].DecodedLabel);
+        Assert.Equal("LINTERNA", db.Records[167].DecodedLabel);
+        Assert.Equal("RADIAL", db.Records[171].DecodedLabel);
+        Assert.Equal("CINTA DE CORONA FÚNEBRE", db.Records[172].DecodedLabel);
+
+        // Test scene graph and Mermaid flowchart formatting
+        string sceneGraph = db.FormatSceneGraph(1, 0);
+        Assert.Contains("URNA", sceneGraph);
+        Assert.Contains("GUANTE", sceneGraph);
+        Assert.Contains("Mirar", sceneGraph);
+
+        string mermaid = db.GenerateMermaid(1, 0);
+        Assert.StartsWith("flowchart TD", mermaid);
+        Assert.Contains("URNA", mermaid);
+    }
+
+    [Fact]
+    public void ChapterInteractionArchive_SyntheticDatabase_DecodesLabelsAndBuildsGraph()
+    {
+        var syntheticRecords = new List<(int ChapterId, int SceneId, int ObjectId, int ActionId, string Label)>
+        {
+            (1, 5, 10, 0, "CLAVO"),
+            (1, 5, 10, 1, "COGER CLAVO"),
+            (1, 5, 20, 2, "PUERTA DE HIERRO"),
+            (2, 8, 30, 0, "ESTATUA"),
+        };
+
+        byte[] dbBytes = SyntheticInteractionDatabase(syntheticRecords);
+        Assert.True(ChapterInteractionArchive.IsInteractionDatabase(dbBytes));
+
+        ChapterInteractionDatabase db = ChapterInteractionArchive.Parse(dbBytes);
+        Assert.Equal(2, db.Chapters.Count);
+        Assert.Equal(4, db.TotalRecords);
+
+        Assert.Equal("CLAVO", db.Records[0].DecodedLabel);
+        Assert.Equal("Examine / Look (Mirar)", db.Records[0].VerbName);
+        Assert.Equal("COGER CLAVO", db.Records[1].DecodedLabel);
+        Assert.Equal("Take / Pick up (Coger)", db.Records[1].VerbName);
+        Assert.Equal("PUERTA DE HIERRO", db.Records[2].DecodedLabel);
+        Assert.Equal("Use / Interact (Usar)", db.Records[2].VerbName);
+
+        Assert.Equal([5], db.GetScenesForChapter(1));
+        Assert.Equal([8], db.GetScenesForChapter(2));
+        Assert.Equal([10, 20], db.GetObjectsForScene(1, 5));
+
+        string sceneGraph = db.FormatSceneGraph(1, 5);
+        Assert.Contains("CLAVO", sceneGraph);
+        Assert.Contains("PUERTA DE HIERRO", sceneGraph);
+
+        string mermaid = db.GenerateMermaid(1, 5);
+        Assert.Contains("flowchart TD", mermaid);
+        Assert.Contains("CLAVO", mermaid);
+        Assert.Contains("PUERTA DE HIERRO", mermaid);
+    }
 }
+
