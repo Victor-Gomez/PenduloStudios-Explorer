@@ -195,11 +195,16 @@ Timing is **not stored** anywhere in the asset. Neither records nor segments spe
 - [`SpriteSegment`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
 - Tests: [`SpriteDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)
 
----
-
 ## The character sprite libraries
 
-*Runaway 1*'s characters are in neither the scene archives nor this format. They live in `Resource.001`
+*Runaway 1*'s characters are in neither the scene archives nor this format. They live in `RESOURCE.001`
 and in a second library inside `RESOURCE.000`, as palette-indexed run streams behind a separate 32-byte
 frame record. Both are described in
 [global-data.md](global-data.md#2-resource001--the-character-sprite-library-runaway-1).
+
+*Runaway 2* splits its character library across five chapter archives, `RESOURCE.SP1` through
+`RESOURCE.SP5` ("SP" stands for Sprites, not Spanish). They use the same 32-byte frame records and 8-bit
+coverage stream, but store their body runs as **direct 16-bit RGB565 pixels** (2 bytes per pixel) rather than
+palette indices, and pair a 3,200-byte frame table entry with a stream data entry. Its player character costumes
+live in `RESOURCE.000` slots 168–263 as 48 animations split over paired slots (record table in slot $i$, segment
+stream in slot $i+1$). See [global-data.md](global-data.md#6-character-sprites-and-player-costumes-in-runaway-2).

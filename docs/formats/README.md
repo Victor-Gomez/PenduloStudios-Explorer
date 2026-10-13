@@ -16,14 +16,15 @@ Everything below is little-endian unless stated otherwise. Integers (`u8`, `u16`
 
 | File / container | Kind | Games | Doc |
 | --- | --- | --- | --- |
-| `RESOURCE.<L><nn>`, `M<nn>`, `S<nn>`, `DATAACA*.000`, `DATAVC00.*` | Archive containers — scene archives, audio archives, voice shards, and video keyfiles | All | [archives.md](archives.md) |
+| `RESOURCE.<L><nn>`, `M<nn>`, `S<nn>`, `RESOURCE.TAB`, `DATAACA*.000`, `DATAVC00.*` | Archive containers — scene archives, audio archives, voice shards, video keyfiles, and scene navigation tables | All | [archives.md](archives.md) |
 | Entry 0 (`e00`) | Full-screen scene backgrounds — raw RGB565 rasters, 1024×480 indexed bitmaps, and 1080p JPEG | All | [rasters.md](rasters.md) |
 | Positioned row records & PNG | Overlays — foreground elements, props, inventory icons, and UI panels | All | [overlays.md](overlays.md) |
 | Multi-frame segment streams | Animated sprites — frame bounding boxes, segment streams (HM 8-bit, R1 5-byte, R2 6-byte alpha, R3 7-byte, TNBT/Yesterday flags 6 & 7) | All | [sprites.md](sprites.md) |
 | 3-byte / 4-byte RLE, Sparse, PNG | Scene masks — walkboxes, depth planes, occluders, and clickable hotspots | All | [masks.md](masks.md) |
-| Raw PCM, MP3, Bink Video (`.bik`) | Audio & Video — synthesized WAV streams, MP3 audio, and XOR-restored Bink cutscenes | All | [audio-video.md](audio-video.md) |
-| `RESOURCE.000` .. `RESOURCE.005`, `RESOURCE.IFZ` | Global data — fonts (outlined glyph bitmaps plus their glyph tables), the cursor atlas, interface art (raw rasters, BMP, PNG/JPEG by game), interface animations, character sprite library, phrase tables, and lip-sync visemes | All | [global-data.md](global-data.md) |
+| Raw PCM, MP3, Bink Video (`.bik`), Smacker Video (`.smk`), `.001` subtitles | Audio & Video — synthesized WAV streams, MP3 audio, XOR-restored Bink cutscenes, Smacker cinematics, and timed subtitles | All | [audio-video.md](audio-video.md) |
+| `RESOURCE.000` .. `RESOURCE.005`, `RESOURCE.FNT`, `RESOURCE.IFZ` | Global data — fonts (outlined glyph bitmaps plus their glyph tables), the cursor atlas, interface art (raw rasters, BMP, PNG/JPEG by game), interface animations, character sprite library, phrase tables, and lip-sync visemes | All | [global-data.md](global-data.md) |
 | `Runaway.exe` and its siblings | The executable — where the scene logic lives, since it is in no container; plus the loaders as a check on the formats | R1 (HM by comparison) | [executable.md](executable.md) |
+| `SAVEGAME\SAVEGAME.NNN`, `SAVEGAME.IJS` | Savegames — headerless raw global buffers: RGB565 thumbnail, slot name, and a 100,000-byte state blob holding the scene id, sprite step records, visemes, inventory and settings, plus a slot index | R1 | [savegames.md](savegames.md) |
 | Blocks of 6-bit RGB triples, and 512-byte RGB565 tables | Palettes — Hollywood Monsters' per-entry colour table and shared character colours, and Runaway 1's character-sprite palettes | HM, R1 | [palettes.md](palettes.md) |
 
 ## Game-by-game summary
@@ -33,7 +34,7 @@ that describes it in full; "—" means the game has nothing of that kind.
 
 | | [Scene table](archives.md) | [Background](rasters.md) | [Overlay](overlays.md) | [Sprite segment](sprites.md) | [Mask](masks.md) | [Audio](audio-video.md) | [Video](audio-video.md) | [Voice](archives.md) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Hollywood Monsters** (1997) | Variant A, plus one tableless archive (`RESOURCE.I02`) | 1024×480 8-bit indexed, coloured by the nearest preceding palette block ([palettes.md](palettes.md)) | Row records, 1 byte/px | 5-byte header, 1 byte/px | 3-byte RLE | Raw PCM mono, terminated offset tables: 16-bit music and 8-bit SFX at 11,025 Hz | — | `RESOURCE.004`, one clip per slot, 8-bit 22,050 Hz |
+| **Hollywood Monsters** (1997) | Variant A, plus one tableless archive (`RESOURCE.I02`) | 1024×480 8-bit indexed, coloured by the nearest preceding palette block ([palettes.md](palettes.md)) | Row records, 1 byte/px | 5-byte header, 1 byte/px | 3-byte RLE | Raw PCM mono, terminated offset tables: 16-bit music and 8-bit SFX at 11,025 Hz | Smacker `.smk` (SMK2/SMK4), 104-byte header | `RESOURCE.004`, one clip per slot, 8-bit 22,050 Hz |
 | **Runaway 1** (2001) | Variant A | 1024×600 RGB565, width by stride sweep | Row records, RGB565 | 5-byte header, RGB565 | 3-byte RLE | Raw PCM 16-bit stereo: music 16,000 Hz, SFX and cinematic 22,050 Hz; plain offset tables | Bink, headers XOR-chained in a keyfile | 7 shards, `DATAACA0-6.000`, 8-bit mono |
 | **Runaway 2** (2006) | Variant B (4-byte header) | 1280×720 RGB565 | Row records, RGB565 | 6-byte header, `Flag` selects RGB565 or +alpha | 3-byte RLE | MP3 or WAV, size and format byte per entry | Bink, keyfile | Single `Dataaa.000`, MP3 |
 | **Runaway 3** (2009) | Variant A | 1280×720 RGB565 | Row records, RGB565 | 7-byte header, `u16 Count`, RGB565 / alpha / RGBA | Sparse spans, `Flag` 2 solid or 4 antialiased | MP3 or WAV, size and format byte per entry | Plain Bink, no keyfile | Single `Dataaa.000`, MP3 |
@@ -50,9 +51,9 @@ The numbering is reused across the games for unrelated things, so it is worth re
 | **Hollywood Monsters** | The menu panel, UI and font art, the shared 80-colour palette block, and 14 resident sound effects in the tail; 1-byte header, 100 slots | Ambient audio | Cinematic audio | Script text: obfuscated rows + speech cues ([global-data.md](global-data.md)) | Voice bank |
 | **Runaway 1** | Font atlases, the cursor atlases, UI art, 11 interface animations and the three character palettes; 20-byte header, 500 slots | Character sprite library: 168 animations, palette-indexed run streams, decoded ([global-data.md](global-data.md)) | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; decoded, and the loader in the executable agrees ([executable.md](executable.md)) | Lip-sync visemes |
 | **Runaway 2** | The same, with wider glyph records: four fonts, cursor atlases, UI art and 34 animations; 24-byte header, 312 slots | A scene archive, not a global one | Cinematic audio | Dialogue phrase tables | Lip-sync visemes |
-| **Runaway 3** | Interface art as whole BMP files, five fonts and 47 animations; 24-byte header | — (no `001`; `002` is a scene archive) | See left | Dialogue phrase tables | Lip-sync visemes |
-| **The Next BIG Thing** | — (no `000`; the interface is PNG and JPEG in `RESOURCE.IFZ`, beside an undecoded `RESOURCE.TAB`) | — | — | Dialogue phrase tables | Lip-sync visemes |
-| **Yesterday** | — (`RESOURCE.IFZ` again, beside undecoded `TAB`, `DIS`, `CRD`, `FNT` and `PSE`) | — | — | Dialogue phrase tables | — |
+| **Runaway 3** | Interface art as whole BMP files, five fonts, 47 animations, and RESOURCE.005 chapter interaction table (2,173 records across 7 chapters, XOR-chain enciphered object names and verbs); 24-byte header | — (no `001`; `002` is a scene archive) | See left | Dialogue phrase tables | Lip-sync visemes |
+| **The Next BIG Thing** | — (no `000`; the interface is PNG and JPEG in `RESOURCE.IFZ`, beside `RESOURCE.TAB` scene geometry/camera table) | — | — | Dialogue phrase tables | Lip-sync visemes |
+| **Yesterday** | — (`RESOURCE.IFZ` and `RESOURCE.PSE` interface PNGs, beside `RESOURCE.TAB` scene geometry table, `RESOURCE.CRD`/`B31` videos, and `RESOURCE.FNT`) | — | — | Dialogue phrase tables | — |
 
 Sample rates and channel counts are never stored in any of these games; the values above are the decoders'
 documented choices, with the reasoning in [audio-video.md](audio-video.md).

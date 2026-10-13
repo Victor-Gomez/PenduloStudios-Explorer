@@ -55,8 +55,16 @@ The true stride produces a sharp global minimum in the vertical difference metri
 Common scene dimensions across the games:
 - **Standard**: 1024×600 (*Runaway 1*), 1280×720 (*Runaway 3*), 1920×1080 (*TNBT*, *Yesterday*).
 - **Horizontal scrollers**: 1372×600, 1600×600, 2048×600, 2592×600, 3016×770.
+- **Non-standard heights (*Runaway 1*)**: 1200×670 (D03), 1760×1200 (D06), 1880×700 (E10), 1024×700 (F27), 1400×760 (G01), 1640×800 (G02), 1520×900 (G03). See [executable.md](executable.md) §10.6.
 - **Tall / vertical scrollers**: 1024×2062 (credits / vertical towers).
 - **Insets / cutaways**: 1444×800, 282×188, 204×120.
+
+#### Museum restoration lab monitor feeds (*Runaway 1* `RESOURCE.B01`)
+
+In *Runaway 1* Chapter 2 ("Museum: Restoration Lab", `RESOURCE.B01`), entries `e10` through `e25` are 16 identical-sized rasters of 106,032 bytes:
+- **Dimensions**: exactly **282 × 188** pixels ($282 \times 188 \times 2 = 106,032$ bytes).
+- **Purpose**: Security camera feeds, forensic x-ray scans, and CRT monitor displays used during the Mayan crucifix restoration minigame (mobster surveillance, dinosaur skeleton corridor camera, laser scanner view, etc.).
+- **Padding**: Feeds feature 13 rows of black pixel padding at the top (accounting for monitor bezel offset) resulting in lower edge-to-edge sharpness (`~2.43`), identified deterministically by exact dimension match `282 * 188`.
 
 ### 2. Indexed rasters (*Hollywood Monsters*)
 
@@ -69,8 +77,12 @@ geometry, so the byte count alone identifies one:
 - Byte size: exactly 491,520 bytes (`1024 * 480 * 1`), or a whole multiple of it for the taller scrolling screens.
 - Each byte is an index (0–255) into the scene's colour table; see [palettes.md](palettes.md).
 
-There is no stride sweep here and no sharpness score to compute: a size that is not a whole number of
-full screens is not a raster, and nothing else in the archive is that size.
+#### Secondary indexed rasters and interface panels
+
+Beyond the standard 1024×480 screen, *Hollywood Monsters* uses exact fixed-size indexed rasters for UI and travel:
+- **Travel destination tiles (`RESOURCE.I04` chunks 2–6)**: 5 thumbnails of **200 × 93** pixels ($200 \times 93 = 18,600$ bytes) displayed on the world map for airport and travel destinations.
+- **Bottom action panel (`RESOURCE.000` entry 47)**: **1024 × 189** pixels (193,536 bytes) containing the verbs grid, inventory bag arrows, and action bar canvas ($1024 \times \text{0xbd}$).
+- **Dialogue menu panel (`RESOURCE.000` entry 48)**: **640 × 45** pixels (28,800 bytes) containing the 3-section conversation options frame ($12 + 21 + 12$ rows $\times 640$).
 
 ### 3. JPEG backgrounds (*The Next BIG Thing*, *Yesterday*)
 

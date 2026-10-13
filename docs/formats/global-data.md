@@ -62,6 +62,19 @@ shipped Spanish Steam build.
 | 161 | `0x692FCF5` | 15,842 | Small font glyph bitmap, 150 glyphs | Outline/fill shade, see below |
 | 162 | `0x6933AD7` | 750 | Glyph table for slot 161 | 150 × 5-byte records |
 
+The remaining unexplained slots in 10-159, identified 2026-09-30 by rendering them and by their
+loaders in `Runaway.exe` (addresses are VAs, image base 0x400000):
+
+| Slot | Size | Purpose | How established |
+|---|---|---|---|
+| 118 | 4,608 | 48×48 RGB565 badge, "runaway evaluation version" | Rendered. Loaded at `0x406150` into `0xa24c60`, whose first pixel becomes the key colour `0xa838c4`; nothing else reads `0xa24c60`, so retail loads it and never draws it (inferred: demo leftover) |
+| 133 | 884,736 | 768×576, a byte-exact copy of slot 131's region (12,12)-(780,588) | 100% equal pixels; UI init `0x40d451` pastes it into the inventory buffer at (12,12). Probably the clean backing for erasing the item grid (inferred) |
+| 150 | 4,978 | Sound effect, 16,000 Hz mono s16, 2,489 samples (~156 ms) | Sound init `0x4089ee`-`0x408b42` builds a DirectSound buffer {PCM, 1 ch, 16000 Hz, 16 bit} sized to this slot. Lag-1 autocorrelation 0.887 as s16 vs 0.007 shuffled. Which event plays it is not traced |
+| 152, 154 | 4,696,000 each | **End credits**, 400×5870 RGB565, the two byte-identical | Rendered. Credits routine `0x4365d0` scrolls 5,270 = 5870 - 600 steps, draws 400 wide at x = 312 and fades the top and bottom 30 rows. Not padding |
+| 153 | 5,160,960 | Filler, never used as data | 8.00 bits/byte, lag-1 autocorrelation 0.000 at every width. The exe reads slots 153+154 as one 9,856,960-byte block into `[0x94f4e8]`, overwrites it with the screen and 30 × 65,536 u16 fade tables (`0x436300`), and reads 152 over 154's copy |
+| 157 | 4,608 | 48×48 RGB565 CD disc icon, the room-loading indicator | Rendered. Loaded at `0x4061f0` into `0xa65ae0`; `0x405180` draws it at output (0, 720), bottom left of the 4:3 frame. Room loaders call `0x436850` (show) first and `0x436860` (hide) last |
+| 159 | 39,564 | "CAPÍTULO 1".."CAPÍTULO 6" labels: scene-sprite format, 6 frames of 115×28 at (843,142) | Rendered, tiles exactly. Loaded at `0x40d48f`; `0x412550(ch)` draws frame ch-1 on the inventory page under the logo |
+
 Slot 131 is the **inventory** screen — the leather wall with the logo and the character portrait
 oval — and slot 132 is the **menu**, which is easy to get backwards: 131 looks like a title
 backdrop, but 132 carries the volume knob, the brightness lever and the two columns of five
@@ -251,7 +264,7 @@ offset changing.
 
 | Game | Slots | Which |
 |---|---|---|
-| *Runaway 1* | 11 | 135-142, 155, 156, 159 -- menu widgets and pointing hands |
+| *Runaway 1* | 11 | 135-142 (Brian's inventory talking head), 155 (volume knob), 156 (brightness slider), 159 (the six chapter labels) |
 | *Runaway 2* | 34 | 87-94, 105-107, 150, 152, 264-266, 270-287 |
 | *Runaway 3* | 47 | 15-34, 51-63, 67, 176-181, 256, 260, 313-318 |
 
@@ -293,7 +306,7 @@ somewhere else, and nothing here says where. Their fonts are not missing -- see 
 
 *Runaway 1*'s characters are not in the scene archives and are not in the scene sprite format. They live
 in `Resource.001`, a 108 MB library of motion cycles, as palette-indexed run streams behind a 32-byte
-frame record. A second library in the same format sits in `RESOURCE.000` (below).
+frame record. The player character is not in it; he has his own layout in `RESOURCE.000` (below).
 
 #### Layout
 
@@ -390,26 +403,55 @@ and no group straddling a block boundary — so the mapping is structural, not a
 `CharacterSpriteArchive.PaletteSlotFor` is that arithmetic, and a real-install test re-measures the
 margin rather than trusting a recorded answer.
 
-#### A second library in `RESOURCE.000`
+#### The player character, in `RESOURCE.000`
 
-`RESOURCE.000` slots 11 onward are six 17-slot blocks running to slot 96:
+The rest of the cast is in `Resource.001`; the character the player moves is not. He is in
+`RESOURCE.000`, in the same codec but a different layout: **six groups of 17 consecutive slots**, at
+slots 10, 27, 44, 61, 78 and 95, so slots 10-111 are his and nothing else is.
 
-| Phase | Size | Contents |
+| Slot | Size | Contents |
 |---|---|---|
-| 0 | 512 | the character palette, `u16 colour[256]` RGB565 |
-| 1-14 | ~370 KB - ~1 MB | run-stream frame data |
-| 15 | 7,680 | a frame table, 240 × the same 32-byte record |
-| 16 | 4,864 | a frame table, 152 × the same 32-byte record |
+| `g` | 4,864 | walk frame table, **8 rows of 19** records (32 bytes each) |
+| `g+1` | 512 | the palette, `u16 colour[256]` RGB565 |
+| `g+2` .. `g+9` | ~790 KB — ~1 MB | walk run data, one slot per facing |
+| `g+10` .. `g+15` | ~366 KB — ~389 KB | head run data, one slot per head |
+| `g+16` | 7,680 | head frame table, **6 rows of 40** records |
 
-The records have the identical layout to `Resource.001`'s — record 0 of slot 26 is anchor 89,402 over a
-168×418 box — so the two libraries share a format. The palettes are covered in
-[palettes.md](palettes.md).
+The records have the identical layout to `Resource.001`'s, and **a row of a table is one animation whose
+runs are the matching slot**: walk row *d* against slot `g+2+d`, head row *h* against slot `g+10+h`.
+Each row's first `dataOffset` is 0 and its last frame runs to the end of that slot, so the exact tiling
+is the format test here just as it is in the library.
 
-The two tables are not one run of records: each is a sequence of sub-tables whose `dataOffset` restarts
-at 0, six of 40 records in the 240-record table and eight of 19 in the 152-record one. So each sub-table
-is one animation with its own data base, and it is those bases that are missing: neither reading them as
-the 14 data slots in order nor as one slot per sub-table makes the streams walk. This library stays
-documented and undecoded; `Resource.001` covers the same characters and does parse.
+The executable picks a group by the chapter and by a key-light flag the room loader sets, which is why
+they come in pairs: (10, 27), (44, 61) and (78, 95) are the same costume lit from opposite sides, and
+their palettes are byte-identical. Groups 10/27 serve scenes 2xxx-4xxx, 44/61 serve 5xxx and 78/95 serve
+6xxx-9xxx — see [executable.md](executable.md). The palettes are covered in [palettes.md](palettes.md).
+
+##### A head's record describes the body, not the head
+
+This is the one place the two readings genuinely differ, and it is what kept this layout unread. A head
+is a patch painted **over** a walk frame rather than a frame drawn on its own, and its record is the
+body's:
+
+- **Its box and anchor are the walk frame's.** Head 0 of group 10 states 168×418 at anchor (89, 402),
+  which is walk facing 0's frame 0 exactly. The patch itself covers 111×116. A reader that sizes the
+  frame from the record gets a canvas four times too tall with the head in one corner.
+- **Only `edgeCountB` counts its coverage runs.** For a body frame the count is `edgeCountA +
+  edgeCountB`; for a head it is `edgeCountB` alone, in all 1,440 head frames of the game. Reading a head
+  with the body's rule overshoots, the frame does not walk, and the slot is rejected — which is what
+  happened when this was first looked at, and why the conclusion then was that no assignment of data
+  bases worked. One slot per row was right; the coverage rule was the missing half.
+- The runs are in the **same canvas** as the body, so the patch needs no offset of its own: head 0's
+  runs span y 32-147 inside the body's y 32-449, which is where the head is.
+
+`edgeCountA` is then unexplained for a head. It is not the kind-0 run count and it is not constant — it
+ranges over 25-39 across the game. Nothing reads it.
+
+##### What this adds
+
+912 walk frames and 1,440 head frames, 2,352 in all, that were a hex dump before. The heads are the
+lip-sync in visible form: frames 0-5 are the six viseme mouth shapes of `RESOURCE.004` (§5) in the same
+0-5 encoding, and 6-11 repeat them with the eyes closed for a blink.
 
 #### Known unknowns
 
@@ -419,7 +461,7 @@ documented and undecoded; `Resource.001` covers the same characters and does par
   sum, so this costs nothing.
 - **The darker colour table** the shadow is drawn through has not been found in *Runaway 1*; the decoder
   substitutes a flat `ShadowAlpha` of 128.
-- **The per-animation data bases of the `RESOURCE.000` library** (above).
+- **What `edgeCountA` means in a head record** (above). Nothing reads it.
 - **The scale factor.** The characters are authored at one size and the runtime resamples them; the
   factor is in the executable, not in any container ([executable.md](executable.md)).
 
@@ -433,6 +475,16 @@ entry by `VirtualFileSystem.CharacterPaletteFor`; the library is its own `Charac
 Tests are in `Runaway1Tests.cs`, synthetic builders in `SyntheticAssets.cs`, and four real-install tests
 re-verify the container, the frames, the palette locations and the block partition against the shipped
 game.
+
+The player character's animations go through the same decoder by a second `CharacterSpriteAsset.Parse`
+overload that takes the records and the runs separately, with a `CharacterSpriteGeometry` saying whether
+a record describes its own frame or the body underneath. `ActorArchive` owns the slot arithmetic: an
+animation is named by the slot its runs are in, and its group, table slot, row, frame count, palette and
+geometry all follow from that, so the tree carries the slot alone and the loader recovers the rest. A
+group is taken only when all seventeen of its slots are there at the sizes the layout requires. The 84
+animations are an `Actor` folder beside the library in `Characters`; the raw slots stay in `Global Data`,
+so this adds a reading rather than replacing one, and the scan cache is untouched. `Runaway1ActorTests`
+covers the layout, both geometries and the shipped game, where it walks all 2,352 frames.
 
 ### 3. `RESOURCE.003` — dialogue phrase tables
 
@@ -458,23 +510,43 @@ plain[i] = raw[i] ^ raw[i - 1]
 Phrase index `k` pairs 1:1 with voice clip `k` in `Dataa/Dataaa.000`, so no lookup table is needed.
 Read by `PhraseArchive`.
 
-#### Runaway 1 — scene-indexed, not decoded
+#### Runaway 1 — scene-indexed script and voice cues (**verified**)
 
-*Runaway 1* uses the shape its engine also gave *Hollywood Monsters*: a 321-byte leading block, then 1,021
-scene offsets, then per-scene 5-byte records.
+*Runaway 1* uses the container shape its engine inherited from *Hollywood Monsters*: a 321-byte leading key block,
+then 1,021 scene offsets, followed by per-scene 5-byte cue records and enciphered CP850 text rows.
 
 ```text
-0x000: byte[321]  DeltaTemplate   -- 321 is also the Hollywood Monsters row and key length
-0x141: u32[1021]  SceneOffsets    -- indexed by scene number
+0x000: byte[321]  DecodeKey       -- subtractive key (identical to large row width)
+0x141: u32[1021]  SceneOffsets    -- indexed by scene number / 10 (e.g. 100 for RESOURCE.A00)
 ...
 Per-scene block:
-    5-byte records: { u16 Marker, u8 Mid, u16 Tail }
+    byte[0x186a0] SpeechCueDescriptors -- 20,000 x 5-byte cue records
+    u8            SmallRowCount        -- 0 in Runaway 1 (hotspot labels moved to executable)
+    u16           LargeRowCount        -- number of spoken dialogue lines
+    byte[LargeRowCount][321] LargeRows -- 321-byte rows enciphered with DecodeKey, in CP850
 ```
 
-Those 5-byte records have the same shape as the *Hollywood Monsters* speech cues below
-(`{ u16 TextRecordId, u8 ContinuationCount, u16 VoiceSampleId }`), which suggests the two files are the
-same format and that the *Hollywood Monsters* decoder may read this one as well. That has not been tested
-against a *Runaway 1* install, so the explorer still shows the file as bytes.
+Across the game, this yields **54 stages and 5,125 spoken dialogue lines**. Each stage index $s$ maps
+directly to its scene archive:
+- Chapter 1 (A): Stage 100 $\to$ `RESOURCE.A00` (Intro, Gina's hospital room)
+- Chapter 2 (B): Stages 201..208 $\to$ `RESOURCE.B01`..`B08` (Chicago museum)
+- Chapter 3 & 4 (D): Stages 401..414 $\to$ `RESOURCE.D01`..`D14` (Desert & Douglasville)
+- Chapter 5 (E): Stages 502..517 $\to$ `RESOURCE.E02`..`E17` (Hopi village)
+- Chapter 6 (F): Stages 608..642 $\to$ `RESOURCE.F08`..`F42`
+- Final areas (G, H): Stages 701..705 and 801..802 $\to$ `RESOURCE.G*` and `RESOURCE.H*`
+
+##### Speech cue continuation and voice pairing
+
+Unlike *Hollywood Monsters* (which addressed cues as a grid with one utterance per row at frame 0), *Runaway 1*
+packs sequential cue utterances across columns:
+- A cue record is `{ u16 TextRecordId, u8 ContinuationCount, u16 VoiceSampleId }`.
+- Consecutive records within a row are read until terminated by `TextRecordId == 0` or `0xFFFF`.
+- `ContinuationCount` expands to consecutive dialogue lines: `ContinuationCount` sequential line IDs
+  (`TextRecordId + k`) pair 1:1 with consecutive voice samples (`VoiceSampleId + k`).
+- This maps **4,635 out of 5,125 spoken lines with zero conflicts**, spanning clips from 467 (*"¡Hola!"*) to
+  5591 (the very last active clip in `VoiceArchive`).
+- In the explorer, `VirtualFileSystem` uses this mapping to populate subtitle strings and previews for voice
+  clips in the `Voice` tree and organizes `RESOURCE.003` under the `Dialogue` category.
 
 ### 4. `RESOURCE.003` in *Hollywood Monsters* — script text
 
@@ -591,9 +663,124 @@ Encodes mouth posture keyframes synchronized with spoken voice lines.
 
 Each entry is a stream of bytes with values from `0` to `5`, corresponding to six phoneme mouth shapes (closed, slightly open, wide, round, teeth, open wide). Clip `k` pairs with dialogue audio clip `k`.
 
+### 6. Character sprites and player costumes in *Runaway 2*
+
+#### Chapter character sprite libraries (`RESOURCE.SP1`–`RESOURCE.SP5`)
+
+In *Runaway 2*, character animations are distributed across chapter archives named `RESOURCE.SP1` through
+`RESOURCE.SP5` ("SP" = Sprites, Chapters 1 through 5).
+
+- **546 animations across 1,092 paired entries**:
+  - `RESOURCE.SP1`: 84 animations (168 entries)
+  - `RESOURCE.SP2`: 126 animations (252 entries)
+  - `RESOURCE.SP3`: 168 animations (336 entries)
+  - `RESOURCE.SP4`: 84 animations (168 entries)
+  - `RESOURCE.SP5`: 84 animations (168 entries)
+- **Container structure**:
+  - Entry $2k$: 3,200-byte frame table (`CharacterFrameRecord[100]`, exactly 100 frames $\times$ 32 bytes).
+  - Entry $2k+1$: Stream payload for both body runs and coverage runs.
+- **Pixel codec**:
+  - **Direct 16-bit RGB565 pixels** (`bytesPerPixel = 2`): Runaway 1 used 8-bit palette indices referencing
+    external 512-byte palettes in `RESOURCE.000`. Runaway 2 eliminates the palette dependency by encoding
+    little-endian `ushort` RGB565 pixels directly in the body runs.
+  - **Coverage stream**: Uses the identical run format and alpha blending behavior as *Runaway 1*.
+  - Every animation tiles byte-exact across all five archives with zero leftover bytes.
+
+#### Player character costumes in `RESOURCE.000` (slots 168–263)
+
+The player character (Brian Bradley) in *Runaway 2* has costumes stored in `RESOURCE.000` across slots 168 to 263.
+
+- **48 animations across 96 paired slots**: 6 costume sets $\times$ 8 animations per set (one per walking/standing direction).
+- **Format**:
+  - Slot $i$: Header and frame record table (`2 + FrameCount * 14` bytes).
+  - Slot $i+1$: Segment data stream using Runaway 2's 6-byte segment headers (`u16 X, u16 Y, u8 Flag, u8 Count`).
+- When paired, all 48 animations walk and tile byte-exact with valid non-empty frames.
+
+### 7. *Yesterday* 24-bit outlined fonts (`RESOURCE.FNT`) and cutscene subtitles (`Datav/*.001`)
+
+#### `RESOURCE.FNT` (784,141 bytes)
+
+Unlike earlier games that used 8-bit or 16-bit packed fonts in `RESOURCE.000`, *Yesterday* packs its localized font atlases into `RESOURCE.FNT`:
+
+```text
+Header (36 bytes):
+  u32 Magic                   -- 0x00000000
+  u32 Font0GlyphCount         -- 196
+  u32 Font0GlyphTableOffset   -- 36
+  u32 Font0BitmapOffset       -- 1,408
+  u32 Font0BitmapSize         -- 358,071 (119,357 px * 3)
+  u32 Font1GlyphCount         -- 191
+  u32 Font1GlyphTableOffset   -- 359,479
+  u32 Font1BitmapOffset       -- 360,816
+  u32 Font1BitmapSize         -- 423,325 (141,108 px * 3)
+```
+
+- **Glyph table records**: Uses the 7-byte record layout (`u16 Offset, u16 Top, u16 Height, u8 Width`) also seen in *Runaway 2* and *The Next BIG Thing*.
+- **Bitmap encoding**: 3 bytes per pixel (24-bit RGB):
+  - Channels 0 and 2 are identical multiples of 17 (0 to 15 expanded to 0..255) defining outline opacity.
+  - Channel 1 defines glyph body fill opacity.
+  - Decoded into clean BGRA32 rasters with black outlines and white text fill (`FontDecoder.DecodeRgb24`).
+
+#### Cutscene subtitles (`Datav/*.001`)
+
+In *Yesterday*, video files retain `.000` extensions, while accompanying `.001` files are plain-text timed subtitle scripts:
+- Lines starting with `//` specify dialogue text.
+- Positioning and timing lines: `X <pos>`, `Y <pos>`, `B <begin_frame>`, `E <end_frame>`.
+
+### 8. *Runaway 3* Chapter Interaction & Action Database (`RESOURCE.005`)
+
+`RESOURCE.005` (478,152 bytes) is a compiled interaction database covering all 7 chapters of *Runaway 3*:
+
+```text
+Header:
+  u32 TotalRecords            -- 2,173
+  u32 ChapterCount            -- 7
+  ChapterEntry[7]             -- 12 bytes each: { u32 ChapterId, u32 RecordCount, u32 Offset }
+Records:
+  Record[2,173]               -- 220 bytes each:
+                                  u32 ChapterId
+                                  u32 SceneId
+                                  u32 ObjectId
+                                  u32 ActionId
+                                  u8  Payload[204]
+```
+
+Total size: $8 + 7 \times 12 + 2,173 \times 220 = 478,152$ bytes.
+
+#### Payload XOR-Chain Decryption & Object Labels
+
+The 204-byte payload of each record is enciphered with the same XOR-chain algorithm used by `PhraseArchive` (`RESOURCE.003`), keyed on the chapter-relative record index `r & 0xFF`:
+
+```csharp
+plain[0] = (byte)(raw[0] ^ (recordInChapter & 0xFF));
+for (int j = 1; j < 204; j++)
+    plain[j] = (byte)(raw[j] ^ raw[j - 1]);
+```
+
+The decrypted buffer begins with a null-terminated Spanish string naming the object or interaction target (e.g. `URNA`, `GUANTE`, `LINTERNA`, `CESTA DE LA COLECTA`, `RADIAL`, `ENFRIAR @`, `CORTAR CABLE PARABIOTÉRMICO`), followed by state trigger flags and parameter bytes.
+
+#### Verb Actions & Scene Trigger Graph
+
+The engine's action IDs map directly to canonical adventure game verbs:
+- `0`: Examine / Look (*Mirar*)
+- `1`: Take / Pick up (*Coger*)
+- `2`: Use / Interact (*Usar*)
+- `3`: Talk To (*Hablar con*)
+- `4`: Go To (*Ir a*)
+- `5`: Drop / Leave (*Dejar*)
+- `6`: Show Inventory (*Mostrar inventario*)
+- `20`: Combine / Use With (*Usar con*)
+
+`ChapterInteractionDatabase` structures these records into an interactive tree grouped hierarchically by **Chapter → Scene → Object → Action**, providing formatted ASCII interaction graphs and exportable Mermaid flowcharts (`flowchart TD`).
+
 ## Decoders
 
+- [`CharacterSpriteAsset`](../../src/RunawayExplorer.Core/Formats/CharacterSpriteDecoder.cs)
+- [`RouteDecoder`](../../src/RunawayExplorer.Core/Formats/RouteDecoder.cs)
+- [`YesterdayFontArchive`](../../src/RunawayExplorer.Core/Formats/YesterdayFontArchive.cs)
+- [`CutsceneSubtitles`](../../src/RunawayExplorer.Core/Formats/CutsceneSubtitles.cs)
+- [`ChapterInteractionArchive`](../../src/RunawayExplorer.Core/FileSystem/ChapterInteractionArchive.cs)
 - [`PhraseArchive`](../../src/RunawayExplorer.Core/FileSystem/PhraseArchive.cs)
 - [`VisemeArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
 - [`GlobalArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- Tests: [`ContainerTests`](../../tests/RunawayExplorer.Core.Tests/ContainerTests.cs), [`PhraseArchiveTests`](../../tests/RunawayExplorer.Core.Tests/PhraseArchiveTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- Tests: [`ContainerTests`](../../tests/RunawayExplorer.Core.Tests/ContainerTests.cs), [`Runaway1Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway1Tests.cs), [`Runaway2ContainerTests`](../../tests/RunawayExplorer.Core.Tests/Runaway2Tests.cs), [`Runaway3Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway3Tests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs), [`PhraseArchiveTests`](../../tests/RunawayExplorer.Core.Tests/PhraseArchiveTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)

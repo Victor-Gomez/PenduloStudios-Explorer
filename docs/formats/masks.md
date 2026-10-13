@@ -30,9 +30,18 @@ Runs are often **scanline-bounded**: the sum of run lengths in any row equals th
 
 *Runaway 1* mixes both encodings, freely, within the same game. Of its 58 scene masks, **36 are
 scanline-bounded and 22 are continuous** -- their runs wrap onto the next row and only the grand
-total is meaningful. (One more, `RESOURCE.F27` entry 1, is neither: its runs total 716,800 px
-against a 1024x600 background, and it has not been explained.) So the scanline rule cannot be
-used to *recognise* a *Runaway 1* mask; it misses more than a third of them.
+total is meaningful. In all cases, the pixel total matches the scene's configured dimensions
+(`width * height`). Note that several scenes have heights other than 600 px configured by the
+executable's scene loader (`[0x7fc56e]`) and must be decoded using their scene-specific geometry:
+- `RESOURCE.D03`: $1200 \times 670$ (804,000 px)
+- `RESOURCE.D06`: $1760 \times 1200$ (2,112,000 px)
+- `RESOURCE.E10`: $1880 \times 700$ (1,316,000 px)
+- `RESOURCE.F27`: $1024 \times 700$ (716,800 px; loader sets `[0x7fc56e] = 700` (`0x2bc`), which explains why its 769 runs total exactly 716,800 px despite the shipped entry 0 background raster being 1024x600)
+- `RESOURCE.G01`: $1400 \times 760$ (1,064,000 px)
+- `RESOURCE.G02`: $1640 \times 800$ (1,312,000 px)
+- `RESOURCE.G03`: $1520 \times 900$ (1,368,000 px)
+
+So the scanline rule cannot be used to *recognise* a *Runaway 1* mask; it misses more than a third of them.
 
 #### A mask may paint the whole screen as one zone
 
@@ -145,11 +154,11 @@ table, counting only the ids a scene's mask actually paints:
 | Page | Meaning | Evidence |
 |---|---|---|
 | 0 | **Walkable region**, 0 = not walkable | Set on 45% of a scene's ids, ~4 regions per scene. Tinting lights the ground and nothing else. It numbers the regions; it does **not** sort them front to back -- see the note below the table. |
-| 1 | **Scene item / hotspot index**, 0 = nothing | Set on 54% of ids, ~10 items per scene, and groups of zone ids collapse onto one item number, which is how one object owns several zones. In F13 it lights exactly the door, the well, the skull on the stick and the exit strip; probing the picture returns item 1 for the exit, 2 for the door, 3 for the well, 5 for the skull. |
+| 1 | **Scene item / hotspot index**, 0 = nothing | Set on 54% of ids, ~10 items per scene, and groups of zone ids collapse onto one item number, which is how one object owns several zones. In F13 it lights exactly the door, the well, the skull on the stick and the exit strip; probing the picture returns item 1 for the exit, 2 for the door, 3 for the well, 5 for the skull. The resulting 1-based index maps directly to the hotspot definitions in the executable, where hotspot names are stored in a contiguous array at `0x92af91` with a stride of 81 bytes per hotspot (see [executable.md](executable.md) §10.5). |
 | 2 | **Depth plane**, larger = nearer, 0 = furthest | The sparse page: set on only 19% of a scene's ids, ~3 values. An actor takes the value of the zone under its feet, and every pixel with a greater value is drawn over it. In F13 the page marks exactly the totem pole (2), the skull on the stick (2) and the well with its frame and bucket (1) -- the three walk-behind objects -- and nothing else. In G04 it marks the near rock wall at the cave mouth (1) and the foreground rock and bushes (2). |
 | 3 | **Actor brightness class**, 0..6 | Dense (91% of ids) and unrelated to screen row, because it is a lighting *field* rather than an object map. In B02, the darkened hospital room, the whole scene is one value except a single quadrilateral lying exactly on the pool of moonlight the window throws on the floor. In E03 the page is concentric ellipses centred on the floor -- a lamp's falloff quantised into bands. Neither follows the scenery. The *Hollywood Monsters* page indexes signed deltas added to the actor's palette; *Runaway 1* is 16-bit colour, so how the class becomes a brightness is still open. |
 | 4 | **Not a page. Never read it.** | The entry is 1,536 bytes for six pages but only five are written; this slot keeps whatever was in the exporter's buffer -- see the note below the table. |
-| 5 | **Footstep surface material**, 0..7 | Dense (98% of ids) and constant across the whole scene in 40 of 56 scenes, which is what one floor material looks like. Where a scene has two, the boundary is the material's edge in the painting and not an object: in F18 the dirt street is 2 and the wooden boardwalk is 3, and the border traces the front edge of the planks. The per-scene sets group by location -- the desert scenes E02, E05, E07 and E08 all use 2 alone. In *Hollywood Monsters* the same page indexes the scene's resident sound effects, played on the walk cycle's two footfall cels. |
+| 5 | **Footstep surface material**, 0..7 | Dense (98% of ids) and constant across the whole scene in 40 of 56 scenes, which is what one floor material looks like. Where a scene has two, the boundary is the material's edge in the painting and not an object: in F18 the dirt street is 2 and the wooden boardwalk is 3, and the border traces the front edge of the planks. The per-scene sets group by location -- the desert scenes E02, E05, E07 and E08 all use 2 alone. In *Runaway* the exe reads it once (`0x431b49`): the value is a material 1-7 that picks one of two random variants from `RESOURCE.002` slots `19+2m` and `20+2m` (16 kHz mono s16), 0 is silent -- see [executable.md](executable.md) section 8. In *Hollywood Monsters* the same page indexes the scene's resident sound effects, played on the walk cycle's two footfall cels. |
 
 #### Sparse pages classify, dense pages fill
 

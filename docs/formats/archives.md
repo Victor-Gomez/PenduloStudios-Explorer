@@ -107,13 +107,27 @@ the region data, and it names two entries that would otherwise be filed as anony
 
 #### Common scene entries
 
-- **Entry 0 (`e00`)**: Scene background art. Full-screen RGB565 raster (R1–R3), 1024×480 indexed bitmap (*Hollywood Monsters*), or 1080p JPEG (*The Next BIG Thing*, *Yesterday*).
+- **Entry 0 (`e00`)**: Scene background art. Full-screen RGB565 raster (R1–R3, 1024×600 or panoramic 1560×600 in *Runaway 2* `RESOURCE.D12`, `D14`, `D17`), 1024×480 indexed bitmap (*Hollywood Monsters*), or 1080p JPEG (*The Next BIG Thing*, *Yesterday*).
 - **Entry 1 (`e01`)**: Primary scene interaction mask (RLE walkboxes, hotspots, depth planes).
 - **Subsequent entries**: Additional overlays, sprite animations, secondary masks, or auxiliary scene tables.
 - **Fixed data entries**:
-  - `1536 bytes`: Per-scene attribute table (hotspot properties, walkbox flags, depth levels).
-  - `43659 bytes`: Scene script/logic table.
-  - `704 bytes`: Coordinate mapping table.
+  - `335529 bytes` (`e03` in *Runaway 2* and *Runaway 3*): Precomputed waypoint navigation mesh and pathfinding matrix (present across 65 scene archives in Runaway 2 and 53 playable scenes in Runaway 3). Split into two planar sections for a $51 \times 51 = 2,601$ zone matrix: bytes `0..208,079` contain 2,601 slots $\times$ 80 bytes (up to 20 coordinate waypoints `(ushort X, ushort Y)`), followed by bytes `208,080..335,528` containing 2,601 slots $\times$ 49 bytes (ordered zone transition hop sequences terminated by 0). Total: $208,080 + 127,449 = 335,529$ bytes. See `RouteDecoder.cs`.
+  - `43659 bytes`: Precomputed waypoint and walk route mesh in *Runaway 1* (present across 23 scene archives). Split into two planar sections for a $21 \times 21 = 441$ zone matrix: bytes `0..35,279` contain 441 slots $\times$ 80 bytes (up to 20 coordinate waypoints `(ushort X, ushort Y)`), followed by bytes `35,280..43,658` containing 441 slots $\times$ 19 bytes (ordered zone transition hop sequences terminated by 0). Total: $35,280 + 8,379 = 43,659$ bytes. See `RouteDecoder.cs`.
+  - `704 bytes`: Walkway Perspective Corridor Table in *Runaway 1* (present in `RESOURCE.F09` and `RESOURCE.H09` entry 4). Header `u16 SpanCount` (117) followed by 117 records of 6 bytes `{ u16 Width, u16 Y, u16 X }` defining horizontal walk corridor trapezoid bounds for every scanline from $Y=483$ to $Y=599$ (bottom of the 1024×600 canvas). Exactly: $2 + 117 \times 6 = 704$ bytes. See `CorridorSpanDecoder.cs`.
+  - `194560 bytes` (`e03` in *The Next BIG Thing* and *Yesterday*): 1080p waypoint navigation matrix table. Stores 320-byte route slots encoding up to 40 32-bit `(int X, int Y)` coordinate waypoints, scaled for 1920×1080 and panoramic scenes, terminated by sentinel coordinate `0x0000FFFF`.
+  - `589824 bytes` (`e02` in *The Next BIG Thing* and *Yesterday*): 1080p zone transition hop table pairing with the waypoint table.
+  - `48960 bytes` (`e00`–`e06` in *Runaway 1* `RESOURCE.A03`): Chapter selection thumbnail cards. 7 fixed-size $204 \times 120$ RGB565 rasters ($204 \times 120 \times 2 = 48,960$ bytes) displayed on the main menu save/chapter select screen.
+  - `3909 bytes` (`e07` in *Hollywood Monsters* `RESOURCE.I04`): World map travel selection mask. Continuous 3-byte RLE mask decompressing to $1024 \times 480$ (491,520 pixels) hit-testing the 7 destinations.
+  - `516096 bytes` (`e43` in *Hollywood Monsters* `RESOURCE.000`): Inventory item icons book. 126 $64 \times 64$ 8-bit indexed icon pages ($126 \times 4,096 = 516,096$ bytes), rendered with `RESOURCE.000` entry 49's 80-color palette (slots 176–255; 0 transparent).
+  - `785301 bytes` (*Yesterday* `RESOURCE.X03`): Cutscene illustrations archive. Runaway 2-style container ($32$-byte table half, $68$-byte table end) holding 8 $1920 \times 1080$ PNG slides.
+  - `526654 bytes` (*The Next BIG Thing* `RESOURCE.004`): Lip-sync viseme tracks. $11,500$ `{u32 Offset, u32 Size}` slots ($92,000$-byte table) encoding mouth phoneme keyframe arrays.
+
+##### Character sprite archives: `RESOURCE.SP1`–`RESOURCE.SP5` (*Runaway 2*)
+
+In *Runaway 2*, the chapter character sprite libraries are named `RESOURCE.SP1` through `RESOURCE.SP5`
+("SP" for Sprites, rather than Spanish localized text). They contain 546 animations in total across 1,092
+paired entries: an even entry containing a 3,200-byte frame table (`CharacterFrameRecord[100]`) followed by
+an odd entry containing the body and coverage stream data. All 546 animations tile byte-exact.
 
 ### 2. Audio archives (`RESOURCE.M<nn>`, `RESOURCE.S<nn>`, `RESOURCE.002`)
 
@@ -181,7 +195,9 @@ Data:
 
 **Take the smallest of the seven values for a slot.** It is the real offset, and the shard it came from is the shard holding the clip. A seven-way tie means shard 0, whose local offsets *are* the placeholder values.
 
-A clip's size is the gap to the next clip **in the same shard**; the last clip in a shard runs to that shard's end. The clips tile every shard exactly, from byte 48,000 to EOF, with no gap and no overlap — which is what confirms the rule.
+A clip's size is the gap to the next **recording** in the same shard, and the last one in a shard runs to that shard's end. The next recording is not always a clip the shard owns. In *Runaway 1*, 869 lines are stored in two shards, all of them in shards 4 and 6 (382 copies in shard 4, 487 in shard 6), and the smaller offset wins as above. The losing copy is still a local value in its shard's table: it is not the slot's placeholder, which is the value most of the seven shards agree on. That copy bounds the clip before it, so every local value in a shard's table is a boundary, not only the owned ones. With those boundaries, the clips and the second copies tile every shard from byte 48,000 to EOF with no gap and no overlap.
+
+> **Correction.** This previously used only the owned clips as boundaries and said the clips tile every shard exactly. They did, but only because each clip absorbed the second copies after it. Clip 2535 ("Busca un buen arqueologo", F09) ran on through 5.4 MB of shard 4's copies of shard 6 lines, about six minutes of audio, and the longest clip came out at 726 s instead of 14 s.
 
 > **Correction.** This previously read: "If an offset in a shard is greater than or equal to that shard's file size, it indicates the clip resides in another shard. The reader searches shards sequentially until a valid offset is found." That is unsafe, and a lone shard's table does not say which of the other six to try. All shards carry the *same* placeholder, so whenever that placeholder is smaller than a large shard's file size the sequential search stops on that shard and reads the middle of an unrelated clip. Shards 4 and 6 are 69 MB and 85 MB, so this is not hypothetical. Taking the minimum avoids it.
 
@@ -226,9 +242,40 @@ Restoring a video consists of reading the decrypted 1024-byte header and appendi
 restored_bik = decrypted_header[0..1024] + datav_file[1024..]
 ```
 
+#### Hollywood Monsters Smacker cutscenes (`.SMK`)
+
+Unlike *Runaway 1*–*3*, which use XOR-obfuscated Bink headers stored in a keyfile catalog, *Hollywood Monsters* uses standard Smacker video files (`.SMK`, four-character signatures `SMK2` or `SMK4`) stored plainly in cutscene directories (`Video/`, `Movies/`, `Cinematics/`, `Smk/` or the game root). They do not require keyfile restoration. See [audio-video.md](audio-video.md) §4 for details on the 104-byte Smacker header layout, audio track bitmasks, and LibVLC playback.
+
+### 5. Scene navigation table (`RESOURCE.TAB`)
+
+In *The Next BIG Thing* and *Yesterday*, scene geometry, panoramic canvas dimensions (up to 3492×1080), camera viewport coordinates, and waypoint navigation bounds are stored in a dedicated table `RESOURCE.TAB`:
+
+#### Layout
+
+```text
+Header:
+    u8  SceneCount              -- number of scenes (N)
+    u16 SceneId[N]              -- scene identifier (e.g. 101 -> RESOURCE.A01)
+    u32 Offset[N]               -- byte offset to each scene definition record
+
+Records:
+    u16 Width                   -- canvas width in pixels (e.g. 1920, 2020, 3492)
+    u16 Height                  -- canvas height in pixels (1080, 1120)
+    <Camera and waypoint coordinate pairs (float X, float Y)>
+```
+
+### 6. Yesterday high-definition cutscene animation archives (`RESOURCE.X69`)
+
+In *Yesterday*, `RESOURCE.X69` (8,547,597 bytes) uses the Runaway 2-style offset-size table header ($36$ byte offset half, $76$ byte table boundary) holding 9 cutscene entries:
+- **Entries 0 & 1**: Cutscene interaction metadata and control records (188,471 B and 149,086 B).
+- **Entries 2 through 8**: Seven large 25-frame cutscene animation payloads (exactly 1,172,852 bytes each, starting with frame count `fc=25` and offset `fo0=352`).
+
+### 7. Runaway 3 chapter interaction database (`RESOURCE.005`)
+
+In *Runaway 3*, `RESOURCE.005` (478,152 bytes) stores the game's chapter trigger and interaction database across 7 chapters (2,173 220-byte records). Each record contains an adventure interaction definition with Spanish object identifiers (`URNA`, `GUANTE`, `RADIAL`, etc.) enciphered via a chapter-local XOR-chain formula. See [global-data.md](global-data.md) §8 for record layout, the XOR decryption algorithm, verb mappings, and the Mermaid interaction graph format.
+
 ## Known unknowns
 
-- The precise format of the 43,659-byte scene data tables.
 - The meaning of the 2-byte trailer flags in the video keyfile filename records.
 
 ## Decoders
@@ -237,5 +284,14 @@ restored_bik = decrypted_header[0..1024] + datav_file[1024..]
 - [`AudioArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
 - [`VoiceArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
 - [`VideoKeyfile`](../../src/RunawayExplorer.Core/FileSystem/VideoKeyfile.cs)
+- [`SmackerVideo`](../../src/RunawayExplorer.Core/Formats/SmackerVideo.cs)
+- [`ChapterInteractionArchive`](../../src/RunawayExplorer.Core/FileSystem/ChapterInteractionArchive.cs)
+- [`SavegameArchive`](../../src/RunawayExplorer.Core/FileSystem/SavegameArchive.cs)
+- [`RouteDecoder`](../../src/RunawayExplorer.Core/Formats/RouteDecoder.cs)
+- [`CorridorSpanDecoder`](../../src/RunawayExplorer.Core/Formats/CorridorSpanDecoder.cs)
+- [`SceneTable`](../../src/RunawayExplorer.Core/Formats/SceneTable.cs)
+- [`HollywoodAttributeTableDecoder`](../../src/RunawayExplorer.Core/Formats/HollywoodAttributeTableDecoder.cs)
+- [`HollywoodSceneMetadata`](../../src/RunawayExplorer.Core/Formats/HollywoodSceneMetadata.cs)
+- [`HollywoodFrankensteinReward`](../../src/RunawayExplorer.Core/Formats/HollywoodFrankensteinReward.cs)
 - [`ArchiveWindowStream`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- Tests: [`ContainerTests`](../../tests/RunawayExplorer.Core.Tests/ContainerTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- Tests: [`ContainerTests`](../../tests/RunawayExplorer.Core.Tests/ContainerTests.cs), [`Runaway1Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway1Tests.cs), [`Runaway2Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway2Tests.cs), [`Runaway3Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway3Tests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs), [`SceneTableTests`](../../tests/RunawayExplorer.Core.Tests/SceneTableTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)

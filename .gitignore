@@ -63,3 +63,4 @@ __pycache__/
 
 # Local reverse-engineering scratch tools, not part of the shipped project
 tools/
+/docs/scenes

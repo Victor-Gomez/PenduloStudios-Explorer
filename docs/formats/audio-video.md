@@ -30,7 +30,7 @@ adjustable voice sample rate in Settings: that setting exists because *Runaway* 
 
 No rate or channel count is stored anywhere. The streams are mono rather than interleaved stereo: the
 autocorrelation of the 16-bit music decays smoothly from lag 1, which it would not do if consecutive
-samples belonged to different channels. There are no videos — the game ships no Bink data and no keyfile.
+samples belonged to different channels. (Cinematics use Smacker `.smk` files rather than Bink data and keyfiles).
 
 The rates were not obvious. `Monsters.exe` builds its `WAVEFORMATEX` at runtime rather than storing one,
 so there is no structure to read off, and both 11,025 and 22,050 appear in the binary as bare constants.
@@ -76,13 +76,15 @@ Starting with *Runaway 2*, dialogue and music tracks are encoded as standard MP3
 - Sync word: `0xFF 0xFB` or `0xFF 0xFA` (11-bit MPEG sync).
 - Decoded in-process via NLayer or routed to LibVLC for streaming playback.
 
-## Video format: Bink Video (`.bik`)
+## Video formats
 
-Cutscenes in `Datav/` are standard RAD Game Tools Bink Video files ("BIKi" or "KB2" fourcc).
+### 1. Bink Video (`.bik`)
 
-### Header encryption and restoration
+Cutscenes in `Datav/` across *Runaway* 1, 2, 3, *The Next BIG Thing*, and *Yesterday* are standard RAD Game Tools Bink Video files ("BIKi" or "KB2" fourcc).
 
-On disk, the first 1024 bytes of every `DATAV*.<nnn>` file are zeroed or filled with obfuscated dummy data to prevent direct opening with standard video players.
+#### Header encryption and restoration
+
+In *Runaway 1* and *Runaway 2*, the first 1024 bytes of every `DATAV*.<nnn>` file on disk are zeroed or filled with obfuscated dummy data to prevent direct opening with standard video players.
 
 The real 1024-byte headers are packed in the encrypted `DATAVC00.<nnn>` keyfile (see [archives.md](archives.md)). The explorer restores the original `.bik` file in memory:
 
@@ -94,10 +96,40 @@ Stream videoStream = new ConcatenatedStream(
 );
 ```
 
-Video playback is rendered via LibVLC with audio synchronization and direct hardware acceleration.
+### 2. Smacker Video (`.smk` — *Hollywood Monsters*)
+
+Cinematics and cutscenes in *Hollywood Monsters* (1997) are standard RAD Game Tools Smacker Video files (`.smk`, fourcc signatures `SMK2` or `SMK4`).
+
+#### Header structure (104 bytes)
+
+```text
+0x00: u32 Signature          -- "SMK2" (0x324B4D53) or "SMK4" (0x344B4D53)
+0x04: u32 Width              -- Frame width in pixels
+0x08: u32 Height             -- Frame height in pixels
+0x0C: u32 TotalFrames        -- Total frame count
+0x10: i32 FrameRate          -- Frame rate parameter:
+                                > 0: fps = 1000.0 / FrameRate (milliseconds per frame)
+                                < 0: fps = 100000.0 / (-FrameRate)
+                                = 0: fps = 10.0
+0x14: u32 Flags              -- Bit 0: ring frame; Bits 1..7: audio track mask
+0x18: u32 AudioSizes[7]      -- Compressed size of each audio stream
+0x34: u32 TreesSize          -- Huffman trees section size
+0x38: u32 MMapSize           -- Macroblock map size
+0x3C: u32 MClrSize           -- Color map size
+0x40: u32 FullSize           -- Full frame data size
+0x44: u32 TypeSize           -- Frame type data size
+0x48: u32 AudioRates[7]      -- Audio track format flags:
+                                Bits 0..23: sample rate (e.g. 11025 or 22050 Hz)
+                                Bit 26: 16-bit PCM (1) or 8-bit (0)
+                                Bit 27: stereo (1) or mono (0)
+0x64: u32 Dummy              -- Reserved padding
+```
+
+LibVLC's bundled `libavcodec`/`libavformat` natively demuxes and plays Smacker video and audio streams directly without external codecs.
 
 ## Decoders
 
 - [`WavWriter`](../../src/RunawayExplorer.Core/Formats/WavWriter.cs)
 - [`VideoKeyfile`](../../src/RunawayExplorer.Core/FileSystem/VideoKeyfile.cs)
+- [`SmackerVideo`](../../src/RunawayExplorer.Core/Formats/SmackerVideo.cs)
 - Tests: [`WriterTests`](../../tests/RunawayExplorer.Core.Tests/WriterTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
