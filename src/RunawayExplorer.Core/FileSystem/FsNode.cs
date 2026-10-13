@@ -117,6 +117,12 @@ public sealed class ImageInfo
 
     /// <summary>Raster whose pixels are index values rather than colours.</summary>
     public bool IsMask { get; init; }
+
+    /// <summary>
+    /// Animation whose frames are unrelated pictures (inventory icons, button states) rather than a
+    /// sequence: the viewer opens it as a grid. See <see cref="Formats.SpriteAtlasDetector"/>.
+    /// </summary>
+    public bool IsAtlas { get; init; }
 }
 
 public enum AudioFormat

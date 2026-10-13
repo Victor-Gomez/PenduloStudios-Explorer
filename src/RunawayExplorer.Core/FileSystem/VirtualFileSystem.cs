@@ -648,6 +648,7 @@ public sealed class VirtualFileSystem
                                             isPaired = true;
                                             pairedWithPrev.Add(i + 1);
                                             var combinedEntry = new ArchiveEntry(entry.Index, entry.Offset, totalSize);
+                                            bool isAtlas = SpriteAtlasDetector.LooksLikeAtlas(sprite);
                                             var classification = new EntryClassification(EntryKind.Animation, new ImageInfo
                                             {
                                                 X = sprite.Bounds.X,
@@ -655,6 +656,7 @@ public sealed class VirtualFileSystem
                                                 Width = sprite.Bounds.Width,
                                                 Height = sprite.Bounds.Height,
                                                 Frames = sprite.FrameCount,
+                                                IsAtlas = isAtlas,
                                             });
                                             cached.Add(ScanCache.CachedEntry.From(combinedEntry, classification));
                                         }
@@ -1253,7 +1255,7 @@ public sealed class VirtualFileSystem
         // and the stride sweep. Remember the answer the same way the scene archives do.
         if (cache?.TryGet(path) is { Count: > 0 } remembered)
         {
-            foreach (ScanCache.CachedEntry c in remembered)
+            foreach (ScanCache.CachedEntry c in WithoutSwallowedSlots(remembered))
                 AttachGlobalEntry(node, path, c, gameVersion);
             return node;
         }
@@ -1327,6 +1329,7 @@ public sealed class VirtualFileSystem
                             f.ReadExactly(combined);
                             if (SpriteAsset.Parse(combined) is { } sprite)
                             {
+                                bool isAtlas = SpriteAtlasDetector.LooksLikeAtlas(sprite);
                                 pairedSpriteSlots[e.Index] = (new ImageInfo
                                 {
                                     X = sprite.Bounds.X,
@@ -1334,6 +1337,7 @@ public sealed class VirtualFileSystem
                                     Width = sprite.Bounds.Width,
                                     Height = sprite.Bounds.Height,
                                     Frames = sprite.FrameCount,
+                                    IsAtlas = isAtlas,
                                 }, totalSize);
                                 pairedSecondSlots.Add(nextSprite.Index);
                             }
@@ -1423,6 +1427,7 @@ public sealed class VirtualFileSystem
                     // Sprite detection: the record table tiles the entry exactly, so a parse is proof.
                     if (couldBeSprite && SpriteAsset.Parse(data) is { } sprite)
                     {
+                        bool isAtlas = SpriteAtlasDetector.LooksLikeAtlas(sprite);
                         spriteSlots[e.Index] = new ImageInfo
                         {
                             X = sprite.Bounds.X,
@@ -1430,6 +1435,7 @@ public sealed class VirtualFileSystem
                             Width = sprite.Bounds.Width,
                             Height = sprite.Bounds.Height,
                             Frames = sprite.FrameCount,
+                            IsAtlas = isAtlas,
                         };
                         return f;
                     }
@@ -1493,7 +1499,9 @@ public sealed class VirtualFileSystem
                 image = paired.Image;
                 string what = knownName ?? (paired.Image.Frames == 1
                     ? $"sprite {image.Width}×{image.Height}"
-                    : $"animation, {image.Frames} frames, {image.Width}×{image.Height}");
+                    : (image.IsAtlas
+                        ? $"sprite atlas, {image.Frames} frames, {image.Width}×{image.Height}"
+                        : $"animation, {image.Frames} frames, {image.Width}×{image.Height}"));
                 label = $"e{e.Index:000}  {what}";
                 cacheEntry = new ArchiveEntry(e.Index, e.Offset, paired.CombinedSize);
             }
@@ -1556,7 +1564,9 @@ public sealed class VirtualFileSystem
                 image = sprite;
                 string what = knownName ?? (sprite.Frames == 1
                     ? $"sprite {sprite.Width}×{sprite.Height}"
-                    : $"animation, {sprite.Frames} frames, {sprite.Width}×{sprite.Height}");
+                    : (sprite.IsAtlas
+                        ? $"sprite atlas, {sprite.Frames} frames, {sprite.Width}×{sprite.Height}"
+                        : $"animation, {sprite.Frames} frames, {sprite.Width}×{sprite.Height}"));
                 label = $"e{e.Index:000}  {what}";
             }
             else if (overlaySlots.TryGetValue(e.Index, out OverlayInfo? overlay))
@@ -1599,11 +1609,32 @@ public sealed class VirtualFileSystem
             var classified = ScanCache.CachedEntry.From(cacheEntry, new EntryClassification(kind, image));
             classified.Label = label;
             classifiedEntries.Add(classified);
-            AttachGlobalEntry(node, path, classified, gameVersion);
         }
+
+        foreach (ScanCache.CachedEntry c in WithoutSwallowedSlots(classifiedEntries))
+            AttachGlobalEntry(node, path, c, gameVersion);
 
         cache?.Put(path, classifiedEntries);
         return node;
+    }
+
+    /// <summary>
+    /// Drops the entries whose bytes another entry already serves. Runaway 2 splits some sprites over two
+    /// slots -- the frame table in one, the pixels in the next -- and the first slot's entry is widened to
+    /// cover both, so the second on its own is only an undecodable tail of it (e183 under e182). The rule
+    /// is read off the entries themselves rather than off the probe that paired them, so a cached scan
+    /// hides the same slots a fresh one does without the cache having to say so. Only unclassified data
+    /// is dropped, and only when it starts strictly inside another entry: two slots that alias the same
+    /// bytes (Hollywood Monsters' resident sounds) start at the same offset and both stay.
+    /// </summary>
+    internal static IEnumerable<ScanCache.CachedEntry> WithoutSwallowedSlots(IReadOnlyList<ScanCache.CachedEntry> entries)
+    {
+        var spans = entries.Where(c => c.Kind != EntryKind.GlobalData)
+            .Select(c => (Start: c.Offset, End: c.Offset + c.Size))
+            .ToList();
+
+        return entries.Where(c => c.Kind != EntryKind.GlobalData
+            || !spans.Any(s => s.Start < c.Offset && c.Offset + c.Size <= s.End));
     }
 
     /// <summary>Hangs one classified global-archive entry on the archive node.</summary>

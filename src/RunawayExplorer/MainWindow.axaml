@@ -339,6 +339,16 @@
                 <DockPanel x:Name="AnimationPanel" IsVisible="False">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                            <StackPanel x:Name="AnimViewModeGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <Border Classes="segmented" VerticalAlignment="Center" ToolTip.Tip="Display frames as an animation sequence or packed into a grid">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="AnimModeAnimationRadio" Classes="segment" GroupName="AnimViewModeGroup"
+                                                     Content="Animation" Click="AnimModeRadio_Click" Tag="anim" IsChecked="True"/>
+                                        <RadioButton x:Name="AnimModeGridRadio" Classes="segment" GroupName="AnimViewModeGroup"
+                                                     Content="Grid" Click="AnimModeRadio_Click" Tag="grid"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                             <StackPanel x:Name="AnimBackgroundGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
                                 <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="{DynamicResource Label_Background}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
@@ -374,7 +384,7 @@
                     </DockPanel>
 
                     <!-- Transport: play/pause, stop, step, frame counter, loop, fps. -->
-                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                    <StackPanel x:Name="AnimTransportPanel" DockPanel.Dock="Bottom" Margin="0,8,0,0">
                         <Slider x:Name="AnimScrubSlider" Minimum="0" Maximum="1" Value="0" TickFrequency="1" IsSnapToTickEnabled="True"
                                 ValueChanged="AnimScrubSlider_ValueChanged"
                                 PointerPressed="AnimScrubSlider_PointerPressed" PointerReleased="AnimScrubSlider_PointerReleased"/>

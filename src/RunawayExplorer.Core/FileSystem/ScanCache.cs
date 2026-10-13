@@ -21,7 +21,7 @@ public sealed class ScanCache
     };
 
     /// <summary>Bump when the classifier or cache schema changes so old answers are discarded.</summary>
-    public const int FormatVersion = 16;
+    public const int FormatVersion = 17;
 
     public sealed class CachedEntry
     {
@@ -37,6 +37,9 @@ public sealed class ScanCache
         [JsonPropertyName("sh")] public double Sharpness { get; set; }
         [JsonPropertyName("m")] public bool IsMask { get; set; }
 
+        /// <summary>An animation whose frames are unrelated pictures; it opens as a grid. Decoding every frame is what decides it, so it is remembered.</summary>
+        [JsonPropertyName("a")] public bool IsAtlas { get; set; }
+
         /// <summary>
         /// The tree label, for the global archives. A scene entry's label is written from its kind and
         /// geometry when the tree is built, in whichever language is active; a global entry's says things
@@ -46,7 +49,7 @@ public sealed class ScanCache
 
         public ImageInfo? ToImageInfo() => Kind is EntryKind.Data ? null : new ImageInfo
         {
-            Width = Width, Height = Height, X = X, Y = Y, Frames = Frames, Sharpness = Sharpness, IsMask = IsMask,
+            Width = Width, Height = Height, X = X, Y = Y, Frames = Frames, Sharpness = Sharpness, IsMask = IsMask, IsAtlas = IsAtlas,
         };
 
         public static CachedEntry From(ArchiveEntry entry, EntryClassification c) => new()
@@ -62,6 +65,7 @@ public sealed class ScanCache
             Frames = c.Image?.Frames ?? 0,
             Sharpness = c.Image?.Sharpness ?? 0,
             IsMask = c.Image?.IsMask ?? false,
+            IsAtlas = c.Image?.IsAtlas ?? false,
         };
     }
 

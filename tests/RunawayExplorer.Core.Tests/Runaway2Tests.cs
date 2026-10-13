@@ -1076,5 +1076,28 @@ public class Runaway2InterfaceTests
         Assert.Equal((409, 12), (e102.Image.X, e102.Image.Y));
         Assert.Contains("title logo", e102.FriendlyName);
     }
+
+    [Fact]
+    public void RealInstall_SwallowedDataSlotsAreHiddenAndSpriteAtlasesIdentified()
+    {
+        const string r2SteamDir = @"F:\Games\Steam\steamapps\common\Runaway The Dream of the Turtle";
+        if (!Directory.Exists(r2SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(r2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        // Swallowed paired slot e183 should NOT be present in global archive children
+        Assert.Null(global.Children.FirstOrDefault(c => c.EntryIndex == 183));
+
+        // Main entry e182 should be present, classified as Animation, with IsAtlas flag set to true
+        FsNode? e182 = global.Children.FirstOrDefault(c => c.EntryIndex == 182);
+        Assert.NotNull(e182);
+        Assert.Equal(EntryKind.Animation, e182.Kind);
+        Assert.NotNull(e182.Image);
+        Assert.True(e182.Image.IsAtlas);
+        Assert.Equal(25, e182.Image.Frames);
+        Assert.Contains("sprite atlas", e182.FriendlyName);
+    }
 }
 

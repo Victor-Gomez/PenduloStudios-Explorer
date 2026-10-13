@@ -93,6 +93,7 @@ public static class EntryClassifier
                 });
             }
 
+            bool isAtlas = SpriteAtlasDetector.LooksLikeAtlas(sprite);
             return new EntryClassification(EntryKind.Animation, new ImageInfo
             {
                 X = sprite.Bounds.X,
@@ -100,6 +101,7 @@ public static class EntryClassifier
                 Width = sprite.Bounds.Width,
                 Height = sprite.Bounds.Height,
                 Frames = sprite.FrameCount,
+                IsAtlas = isAtlas,
             });
         }
 

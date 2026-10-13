@@ -516,7 +516,7 @@ public partial class MainWindow : Window
                 if (GameSelectorCombo.Items[i] is ComboBoxItem item)
                 {
                     var version = (GameVersion)i;
-                    string dir = _settings.GetGameDir(version);
+                    string? dir = _settings.GetGameDir(version);
                     bool configured = !string.IsNullOrEmpty(dir) && Directory.Exists(dir);
                     item.Content = configured ? $"✓  {gameNames[i]}" : gameNames[i];
                 }
@@ -546,7 +546,7 @@ public partial class MainWindow : Window
             }
             await Dialogs.ShowMessageBox(this, sb.ToString().TrimEnd(), "Auto-Detection Complete", MessageBoxButton.OK, MessageBoxImage.Information);
 
-            string activeDir = _settings.GetGameDir(_settings.ActiveGame);
+            string? activeDir = _settings.GetGameDir(_settings.ActiveGame);
             if (!string.IsNullOrEmpty(activeDir) && Directory.Exists(activeDir) && _vfs is null)
             {
                 await ReloadActiveGameAsync();
@@ -1372,7 +1372,11 @@ public partial class MainWindow : Window
         }
         else if (_currentContent is AnimationResource)
         {
-            if (_animAsset is not null && _animFrames is not null && _animFrameIndex >= 0 && _animFrameIndex < _animFrames.Length)
+            if (_animIsGridMode && _animGridImage is not null)
+            {
+                image = _animGridImage;
+            }
+            else if (_animAsset is not null && _animFrames is not null && _animFrameIndex >= 0 && _animFrameIndex < _animFrames.Length)
             {
                 SpriteFrame frame = _animFrames[_animFrameIndex] ??= _animAsset.DecodeFrame(_animFrameIndex);
                 image = frame.Image;
@@ -2590,6 +2594,10 @@ public partial class MainWindow : Window
     // rounding of a fractional-zoom position -- which is what made animations wobble by a pixel when
     // each frame was its own bitmap placed at its own (x, y).
     private WriteableBitmap? _animCanvas;
+    private WriteableBitmap? _animGridCanvas;
+    private DecodedImage? _animGridImage;
+    private bool _animIsGridMode;
+    private bool _syncingAnimMode;
     private int _animFrameIndex;
     private bool _animPlaying;
     private bool _animScrubDragging;
@@ -2603,6 +2611,8 @@ public partial class MainWindow : Window
         _animCanvas = new WriteableBitmap(
             new PixelSize(Math.Max(1, anim.Asset.Bounds.Width), Math.Max(1, anim.Asset.Bounds.Height)),
             new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Unpremul);
+        _animGridCanvas = null;
+        _animGridImage = null;
         AnimFrameImage.Source = _animCanvas;
         AnimFrameImage.IsVisible = true;
 
@@ -2632,16 +2642,29 @@ public partial class MainWindow : Window
         }
         finally { _syncingScrub = false; }
 
+        // An animation whose frames are unrelated pictures defaults to Grid mode.
+        bool isAtlas = _selectedNode?.Image?.IsAtlas ?? SpriteAtlasDetector.LooksLikeAtlas(anim.Asset);
+        _animIsGridMode = isAtlas;
+        _syncingAnimMode = true;
+        try
+        {
+            AnimModeAnimationRadio.IsChecked = !_animIsGridMode;
+            AnimModeGridRadio.IsChecked = _animIsGridMode;
+        }
+        finally { _syncingAnimMode = false; }
+
         // Only an animation that belongs to a scene has a background to sit on. The character sprite
         // library and the global archives' widgets have none, so the toggle would do nothing.
-        AnimBackgroundGroup.IsVisible = _selectedNode is not null && SceneBackgroundBitmapFor(_selectedNode, false) is not null;
+        AnimBackgroundGroup.IsVisible = !_animIsGridMode && _selectedNode is not null && SceneBackgroundBitmapFor(_selectedNode, false) is not null;
+        AnimTransportPanel.IsVisible = !_animIsGridMode;
 
         LayoutAnimationStage();
-        ShowAnimationFrame(0);
+        if (!_animIsGridMode)
+            ShowAnimationFrame(0);
         AnimationPanel.IsVisible = true;
         _animZoom.Fit();
 
-        if (_settings.AutoPlayAnimation && anim.Asset.FrameCount > 1)
+        if (!_animIsGridMode && _settings.AutoPlayAnimation && anim.Asset.FrameCount > 1)
             StartAnimation();
         else
             SetAnimPlayIcon(false);
@@ -2658,6 +2681,14 @@ public partial class MainWindow : Window
         if (_animAsset is null)
             return;
 
+        if (_animIsGridMode)
+        {
+            ShowAtlasGrid();
+            return;
+        }
+
+        AnimFrameImage.Source = _animCanvas;
+        AnimBoundsRect.IsVisible = true;
         (int bx, int by, int bw, int bh) = _animAsset.Bounds;
         bool showBg = !string.Equals(_settings.BackgroundMode, "no", StringComparison.OrdinalIgnoreCase) && _selectedNode is not null;
         bool isGreyed = string.Equals(_settings.BackgroundMode, "greyed", StringComparison.OrdinalIgnoreCase);
@@ -2694,6 +2725,82 @@ public partial class MainWindow : Window
         PlaceAnimationFrame();
         if (_animZoom.FitToWindow)
             _animZoom.Fit();
+    }
+
+    private void ShowAtlasGrid()
+    {
+        if (_animAsset is null)
+            return;
+
+        if (_animGridCanvas is null || _animGridImage is null)
+        {
+            (DecodedImage sheet, SpriteSheetWriter.SheetManifest manifest) = SpriteSheetWriter.BuildSheet(_animAsset);
+            _animGridImage = sheet;
+            var wb = new WriteableBitmap(
+                new PixelSize(sheet.Width, sheet.Height),
+                new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Unpremul);
+            using (Avalonia.Platform.ILockedFramebuffer fb = wb.Lock())
+            {
+                unsafe
+                {
+                    var span = new Span<byte>((void*)fb.Address, fb.RowBytes * fb.Size.Height);
+                    for (int y = 0; y < sheet.Height; y++)
+                    {
+                        sheet.Pixels.AsSpan(y * sheet.Width * 4, sheet.Width * 4)
+                            .CopyTo(span.Slice(y * fb.RowBytes, sheet.Width * 4));
+                    }
+                }
+            }
+            _animGridCanvas = wb;
+        }
+
+        PauseAnimation();
+        AnimBackground.Source = null;
+        AnimBackground.IsVisible = false;
+        AnimBoundsRect.IsVisible = false;
+        AnimOnionImage.IsVisible = false;
+
+        AnimFrameImage.Source = _animGridCanvas;
+        Canvas.SetLeft(AnimFrameImage, 0);
+        Canvas.SetTop(AnimFrameImage, 0);
+
+        AnimStage.Background = Checkerboard;
+        AnimStage.Width = _animGridImage.Width;
+        AnimStage.Height = _animGridImage.Height;
+
+        int cols = (int)Math.Ceiling(Math.Sqrt(_animAsset.FrameCount));
+        int rows = (int)Math.Ceiling((double)_animAsset.FrameCount / cols);
+        AnimInfoText.Text = $"sprite atlas grid, {_animAsset.FrameCount} frames ({cols}×{rows} cells of {_animAsset.Bounds.Width}×{_animAsset.Bounds.Height}), sheet {_animGridImage.Width}×{_animGridImage.Height}";
+
+        if (_animZoom.FitToWindow)
+            _animZoom.Fit();
+    }
+
+    private void AnimModeRadio_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_syncingAnimMode || _animAsset is null)
+            return;
+
+        bool toGrid = AnimModeGridRadio.IsChecked == true;
+        if (_animIsGridMode == toGrid)
+            return;
+
+        _animIsGridMode = toGrid;
+        AnimBackgroundGroup.IsVisible = !_animIsGridMode && _selectedNode is not null && SceneBackgroundBitmapFor(_selectedNode, false) is not null;
+        AnimTransportPanel.IsVisible = !_animIsGridMode;
+
+        if (_animIsGridMode)
+        {
+            PauseAnimation();
+            LayoutAnimationStage();
+        }
+        else
+        {
+            LayoutAnimationStage();
+            ShowAnimationFrame(_animFrameIndex);
+            if (_settings.AutoPlayAnimation && _animAsset.FrameCount > 1)
+                StartAnimation();
+        }
     }
 
     private void ShowAnimationFrame(int index)
