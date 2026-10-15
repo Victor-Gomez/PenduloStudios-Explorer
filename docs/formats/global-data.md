@@ -1,4 +1,4 @@
-# Global and UI data
+﻿# Global and UI data
 
 Shared global assets — fonts, cursor art, interface icons, phrase lookup tables, lip-sync visemes, the
 character sprite library, and *Hollywood Monsters*' shared colours — reside in numbered global resources
@@ -775,12 +775,12 @@ The engine's action IDs map directly to canonical adventure game verbs:
 
 ## Decoders
 
-- [`CharacterSpriteAsset`](../../src/RunawayExplorer.Core/Formats/CharacterSpriteDecoder.cs)
-- [`RouteDecoder`](../../src/RunawayExplorer.Core/Formats/RouteDecoder.cs)
-- [`YesterdayFontArchive`](../../src/RunawayExplorer.Core/Formats/YesterdayFontArchive.cs)
-- [`CutsceneSubtitles`](../../src/RunawayExplorer.Core/Formats/CutsceneSubtitles.cs)
-- [`ChapterInteractionArchive`](../../src/RunawayExplorer.Core/FileSystem/ChapterInteractionArchive.cs)
-- [`PhraseArchive`](../../src/RunawayExplorer.Core/FileSystem/PhraseArchive.cs)
-- [`VisemeArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- [`GlobalArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- Tests: [`ContainerTests`](../../tests/RunawayExplorer.Core.Tests/ContainerTests.cs), [`Runaway1Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway1Tests.cs), [`Runaway2ContainerTests`](../../tests/RunawayExplorer.Core.Tests/Runaway2Tests.cs), [`Runaway3Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway3Tests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs), [`PhraseArchiveTests`](../../tests/RunawayExplorer.Core.Tests/PhraseArchiveTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- [`CharacterSpriteAsset`](../../src/PenduloStudiosExplorer.Core/Formats/CharacterSpriteDecoder.cs)
+- [`RouteDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/RouteDecoder.cs)
+- [`YesterdayFontArchive`](../../src/PenduloStudiosExplorer.Core/Formats/YesterdayFontArchive.cs)
+- [`CutsceneSubtitles`](../../src/PenduloStudiosExplorer.Core/Formats/CutsceneSubtitles.cs)
+- [`ChapterInteractionArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/ChapterInteractionArchive.cs)
+- [`PhraseArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/PhraseArchive.cs)
+- [`VisemeArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
+- [`GlobalArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
+- Tests: [`ContainerTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ContainerTests.cs), [`Runaway1Tests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway1Tests.cs), [`Runaway2ContainerTests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway2Tests.cs), [`Runaway3Tests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway3Tests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs), [`PhraseArchiveTests`](../../tests/PenduloStudiosExplorer.Core.Tests/PhraseArchiveTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs)

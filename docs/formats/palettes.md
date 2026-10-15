@@ -1,4 +1,4 @@
-# Palettes (*Hollywood Monsters*, *Runaway 1*)
+﻿# Palettes (*Hollywood Monsters*, *Runaway 1*)
 
 *Hollywood Monsters* is palette-indexed throughout: every background, overlay and sprite frame stores one
 byte per pixel, and that byte is an index into a 256-entry colour table assembled from two blocks, one in
@@ -132,11 +132,11 @@ out = (v << 2) | (v >> 4)
 
 ## Decoders & tests
 
-- [`IndexedPalette`](../../src/RunawayExplorer.Core/Formats/IndexedPalette.cs) — parsing, the 6-bit
+- [`IndexedPalette`](../../src/PenduloStudiosExplorer.Core/Formats/IndexedPalette.cs) — parsing, the 6-bit
   expansion, and `WithTail` for the shared block.
-- [`VirtualFileSystem.ScenePaletteFor`](../../src/RunawayExplorer.Core/FileSystem/VirtualFileSystem.cs) —
+- [`VirtualFileSystem.ScenePaletteFor`](../../src/PenduloStudiosExplorer.Core/FileSystem/VirtualFileSystem.cs) —
   resolves and caches one table per scene archive.
-- Tests: [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- Tests: [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs)
 
 ---
 

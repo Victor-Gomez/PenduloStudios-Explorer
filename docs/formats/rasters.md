@@ -1,4 +1,4 @@
-# Full-screen rasters and backgrounds
+﻿# Full-screen rasters and backgrounds
 
 The game engine displays backgrounds for rooms, exterior vistas, panoramic scrollers, and cutscenes using either uncompressed RGB565 bitmaps or baseline JPEG images.
 
@@ -133,6 +133,6 @@ The decoder inspects the first two bytes for `0xFF 0xD8` and retrieves width and
 
 ## Decoders
 
-- [`RasterDecoder`](../../src/RunawayExplorer.Core/Formats/RasterDecoder.cs)
-- [`JpegDecoder`](../../src/RunawayExplorer.Core/Formats/JpegDecoder.cs)
-- Tests: [`ImageDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`TheNextBigThingTests`](../../tests/RunawayExplorer.Core.Tests/TheNextBigThingTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)
+- [`RasterDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/RasterDecoder.cs)
+- [`JpegDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/JpegDecoder.cs)
+- Tests: [`ImageDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs), [`TheNextBigThingTests`](../../tests/PenduloStudiosExplorer.Core.Tests/TheNextBigThingTests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs)

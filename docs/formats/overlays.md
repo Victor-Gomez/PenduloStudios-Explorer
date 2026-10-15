@@ -1,4 +1,4 @@
-# Overlays
+﻿# Overlays
 
 Overlays represent non-fullscreen scene artwork: foreground scenery elements, interactive props, doors, inventory icons, and UI dialog elements placed at specific screen coordinates over the scene background.
 
@@ -81,6 +81,6 @@ RGBA PNGs (ColorType 6) contain per-pixel alpha channels allowing smooth antiali
 
 ## Decoders
 
-- [`OverlayDecoder`](../../src/RunawayExplorer.Core/Formats/OverlayDecoder.cs)
-- [`PngDecoder`](../../src/RunawayExplorer.Core/Formats/PngDecoder.cs)
-- Tests: [`ImageDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)
+- [`OverlayDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/OverlayDecoder.cs)
+- [`PngDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/PngDecoder.cs)
+- Tests: [`ImageDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs)

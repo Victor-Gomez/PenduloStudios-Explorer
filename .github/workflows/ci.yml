@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -35,10 +35,10 @@ jobs:
           sudo apt-get install -y libvlc-dev vlc libfontconfig1 fonts-dejavu-core
 
       - name: Restore dependencies
-        run: dotnet restore RunawayExplorer.slnx
+        run: dotnet restore PenduloStudiosExplorer.slnx
 
       - name: Build solution
-        run: dotnet build RunawayExplorer.slnx -c Release --no-restore
+        run: dotnet build PenduloStudiosExplorer.slnx -c Release --no-restore
 
       - name: Run tests
-        run: dotnet test RunawayExplorer.slnx -c Release --no-build --verbosity normal --logger "console;verbosity=detailed"
+        run: dotnet test PenduloStudiosExplorer.slnx -c Release --no-build --verbosity normal --logger "console;verbosity=detailed"

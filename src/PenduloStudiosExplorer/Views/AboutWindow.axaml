@@ -1,0 +1,105 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PenduloStudiosExplorer.Views.AboutWindow"
+        Title="About Pendulo Studios Explorer"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Height"
+        Width="620"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Icon="avares://PenduloStudiosExplorer/Assets/PenduloStudiosExplorer.ico">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <!-- The Fluent theme uses one mid-blue (#0078D7) for links in both variants, and it clears
+                 4.5:1 contrast against neither background. Pin a per-variant pair that does. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#6CB6FF"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPointerOver" Color="#8FCBFF"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPressed" Color="#4E9BE0"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#0060B0"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPointerOver" Color="#00468A"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPressed" Color="#003666"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,14,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+        <Style Selector="SelectableTextBlock.value">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="FontFamily" Value="Consolas,Menlo,monospace"/>
+            <Setter Property="FontSize" Value="11.5"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="20">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Spacing="8" Margin="0,18,0,0">
+            <Button Content="Copy Diagnostics" Click="CopyDiagnostics_Click" Padding="14,6"
+                    ToolTip.Tip="Copy the version and environment details above to the clipboard, for pasting into a bug report."/>
+            <Button Content="Check for Updates" Click="CheckUpdates_Click" x:Name="CheckUpdatesButton" Padding="14,6"/>
+            <Button Content="Close" Click="Close_Click" Padding="20,6" IsDefault="True"/>
+        </StackPanel>
+
+        <StackPanel>
+            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,4">
+                <Image Grid.Column="0" Source="avares://PenduloStudiosExplorer/Assets/PenduloStudiosExplorer.png" Width="96" Height="96"
+                       VerticalAlignment="Top" Margin="0,0,14,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Top">
+                    <TextBlock Text="Pendulo Studios Explorer" FontSize="20" FontWeight="Bold"/>
+                    <SelectableTextBlock x:Name="VersionText" Opacity="0.8" Margin="0,2,0,0"/>
+                    <TextBlock Text="Created by Victor Gomez" FontWeight="Medium" Opacity="0.85" Margin="0,3,0,0"/>
+                    <TextBlock Text="An asset viewer for adventure games by Pendulo Studios:"
+                               Opacity="0.8" Margin="0,6,0,3"/>
+                    <StackPanel Spacing="2" Margin="0,0,0,0">
+                        <TextBlock Text="• Hollywood Monsters (1997)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Runaway: A Road Adventure (2001)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Runaway 2: The Dream of the Turtle (2006)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Runaway: A Twist of Fate (2009)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• The Next BIG Thing (2011)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Yesterday (2012)" Opacity="0.7" FontSize="11.5"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Classes="section" Text="Environment"/>
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text=".NET"/>
+                <SelectableTextBlock Grid.Row="0" Grid.Column="1" Classes="value" x:Name="RuntimeText"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Avalonia"/>
+                <SelectableTextBlock Grid.Row="1" Grid.Column="1" Classes="value" x:Name="AvaloniaText"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="LibVLC"/>
+                <SelectableTextBlock Grid.Row="2" Grid.Column="1" Classes="value" x:Name="LibVlcText"
+                                     ToolTip.Tip="Backs sound and video playback, including the Bink videos. Bundled on Windows; install it from your distro's packages on Linux."/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Log"/>
+                <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="value" x:Name="LogPathText"/>
+            </Grid>
+
+            <TextBlock TextWrapping="Wrap" Opacity="0.65" FontSize="11.5" Margin="0,16,0,0">
+                <Run FontStyle="Italic">Runaway</Run> and related titles are trademarks of their respective owners. This is an unaffiliated fan-made tool and ships no game data.
+            </TextBlock>
+
+            <StackPanel Orientation="Horizontal" Spacing="4" Margin="-8,10,0,0">
+                <HyperlinkButton Content="Project on GitHub" Click="OpenRepo_Click"/>
+                <HyperlinkButton Content="Author (@Victor-Gomez)" Click="OpenAuthor_Click"/>
+                <HyperlinkButton Content="Report an Issue" Click="OpenIssues_Click"/>
+                <HyperlinkButton Content="Releases" Click="OpenReleases_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

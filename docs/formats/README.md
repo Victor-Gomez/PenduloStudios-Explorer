@@ -1,4 +1,4 @@
-# Pendulo Studios game engine file format reference
+﻿# Pendulo Studios game engine file format reference
 
 Notes on the reverse-engineered file formats used by Pendulo Studios across their adventure games:
 - **Hollywood Monsters** (1997)
@@ -8,7 +8,7 @@ Notes on the reverse-engineered file formats used by Pendulo Studios across thei
 - **The Next BIG Thing** (2011)
 - **Yesterday** (2012)
 
-These notes document what the decoders under [`src/RunawayExplorer.Core/`](../../src/RunawayExplorer.Core/) actually parse; there is no official specification.
+These notes document what the decoders under [`src/PenduloStudiosExplorer.Core/`](../../src/PenduloStudiosExplorer.Core/) actually parse; there is no official specification.
 
 Everything below is little-endian unless stated otherwise. Integers (`u8`, `u16`, `u32`, `i16`) match standard .NET binary reader conventions.
 
@@ -66,7 +66,7 @@ Every format document follows a uniform structure:
 2. **Layout** — on-disk byte layout in reader order with C-like struct pseudocode.
 3. **Semantics** — how to interpret the bytes: coordinate spaces, segment decoding, color channels, stride sweep autocorrelation, and blending rules.
 4. **Known unknowns** — unverified fields or unresolved tables.
-5. **Decoders & tests** — links to the implementing C# classes in `RunawayExplorer.Core` and their xUnit test suites.
+5. **Decoders & tests** — links to the implementing C# classes in `PenduloStudiosExplorer.Core` and their xUnit test suites.
 
 [executable.md](executable.md) is the exception: it describes code rather than a container, so it is
 organised by what was established and how, and it ends with the anchors and tools needed to continue it.

@@ -1,9 +1,9 @@
-<p align="center"><img src="docs/artwork.png" alt="Runaway Explorer"></p>
+﻿<p align="center"><img src="docs/artwork.png" alt="Pendulo Studios Explorer"></p>
 
-# Runaway Explorer
+# Pendulo Studios Explorer
 
-[![CI](https://github.com/Victor-Gomez/Runaway-Explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/Victor-Gomez/Runaway-Explorer/actions/workflows/ci.yml)
-[![Latest Release](https://img.shields.io/github/v/release/Victor-Gomez/Runaway-Explorer?label=release)](https://github.com/Victor-Gomez/Runaway-Explorer/releases/latest)
+[![CI](https://github.com/Victor-Gomez/PenduloStudios-Explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/Victor-Gomez/PenduloStudios-Explorer/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/Victor-Gomez/PenduloStudios-Explorer?label=release)](https://github.com/Victor-Gomez/PenduloStudios-Explorer/releases/latest)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg)](#download)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -23,7 +23,7 @@ The games keep everything in nameless offset-table archives with no file names, 
 headers; the formats were reverse-engineered from the Steam releases and are written up in
 [`docs/formats/`](docs/formats/README.md).
 
-![Runaway Explorer screenshot](docs/screenshot.png)
+![Pendulo Studios Explorer screenshot](docs/screenshot.png)
 
 ## Features
 
@@ -67,18 +67,18 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
 
 ## Download
 
-Pre-built, self-contained standalone binaries for **Windows (x64)** and **Linux (x64)** are available on the **[Releases](https://github.com/Victor-Gomez/Runaway-Explorer/releases/latest)** page. No .NET runtime installation is required to run them.
+Pre-built, self-contained standalone binaries for **Windows (x64)** and **Linux (x64)** are available on the **[Releases](https://github.com/Victor-Gomez/PenduloStudios-Explorer/releases/latest)** page. No .NET runtime installation is required to run them.
 
-1. Download and extract the archive for your operating system (`RunawayExplorer-v*-win-x64.zip` or `RunawayExplorer-v*-linux-x64.tar.gz`).
-2. Run `RunawayExplorer.exe` (Windows) or `./RunawayExplorer` (Linux).
+1. Download and extract the archive for your operating system (`PenduloStudiosExplorer-v*-win-x64.zip` or `PenduloStudiosExplorer-v*-linux-x64.tar.gz`).
+2. Run `PenduloStudiosExplorer.exe` (Windows) or `./PenduloStudiosExplorer` (Linux).
 
 ## Building
 
 Requires the **.NET 10 SDK**. Builds and runs on Windows and Linux (Avalonia UI).
 
 ```
-dotnet build RunawayExplorer.slnx
-dotnet run --project src/RunawayExplorer
+dotnet build PenduloStudiosExplorer.slnx
+dotnet run --project src/PenduloStudiosExplorer
 dotnet test
 ```
 
@@ -88,14 +88,14 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
 
 ## Project layout
 
-- `src/RunawayExplorer.Core/` -- archive readers, image decoders, PNG/APNG/WAV writers and the virtual
+- `src/PenduloStudiosExplorer.Core/` -- archive readers, image decoders, PNG/APNG/WAV writers and the virtual
   file system. Engine-agnostic: no UI framework, no native dependencies.
   - `FileSystem/` -- the scene, audio, global, viseme, voice, chapter interaction, and savegame archive readers; the video keyfile;
     `VirtualFileSystem` (the categorised tree) and `ScanCache`.
   - `Formats/` -- `RasterDecoder`, `JpegDecoder`, `PngDecoder`, `OverlayDecoder`, `SpriteDecoder`, `CharacterSpriteDecoder`, `RleMaskDecoder`, `RouteDecoder`, `SceneTable`, `CorridorSpanDecoder`, `SmackerVideo`, `PngWriter`, `ApngWriter`, `WavWriter`.
   - `Metadata/` -- `SceneCatalog` (official chapter names, scene titles and bilingual descriptions).
   - `Settings/` -- persisted user preferences.
-- `src/RunawayExplorer/` -- Avalonia UI.
+- `src/PenduloStudiosExplorer/` -- Avalonia UI.
   - `MainWindow.axaml` + code-behind -- the browser and the image, animation, sound, video and text viewers.
   - `Services/` -- resource loading, batch export, LibVLC glue, update check, localisation, logging.
   - `Views/` -- settings overlay, animation export overlay, command palette, about, shortcuts, message box, zoom controller.

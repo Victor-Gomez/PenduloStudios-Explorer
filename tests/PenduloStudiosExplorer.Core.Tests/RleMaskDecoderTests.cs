@@ -1,0 +1,450 @@
+﻿using System.Buffers.Binary;
+using PenduloStudiosExplorer.Core.FileSystem;
+using PenduloStudiosExplorer.Core.Formats;
+using Xunit;
+
+namespace PenduloStudiosExplorer.Core.Tests;
+
+public class RleMaskDecoderTests
+{
+    private static byte[] CreateSyntheticMask(int width, int height)
+    {
+        using var ms = new MemoryStream();
+        Span<byte> u16 = stackalloc byte[2];
+        for (int y = 0; y < height; y++)
+        {
+            // Two runs per line: left half ID 1, right half ID 2
+            ushort left = (ushort)(width / 2);
+            ushort right = (ushort)(width - left);
+
+            ms.WriteByte((byte)(1 + (y % 10)));
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, left);
+            ms.Write(u16);
+
+            ms.WriteByte((byte)(2 + (y % 10)));
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, right);
+            ms.Write(u16);
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>A mask of <paramref name="runs"/> (id, length) pairs, in reading order.</summary>
+    private static byte[] MaskOf(params (byte Id, ushort Len)[] runs)
+    {
+        var data = new byte[runs.Length * 3];
+        for (int i = 0; i < runs.Length; i++)
+        {
+            data[i * 3] = runs[i].Id;
+            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(i * 3 + 1, 2), runs[i].Len);
+        }
+        return data;
+    }
+
+    /// <summary>A 1,536-byte attribute table, written page by page.</summary>
+    private static byte[] TableOf(params (int Page, byte Id, byte Value)[] cells)
+    {
+        var t = new byte[1536];
+        foreach ((int page, byte id, byte value) in cells)
+            t[page * 256 + id] = value;
+        return t;
+    }
+
+    [Fact]
+    public void AWholeScreenOfOneZoneIsStillAMask()
+    {
+        // RESOURCE.D07 and RESOURCE.E13 are exactly this: ten runs of a single id covering 1024x600.
+        // The scanline and two-zone tests both reject it, so it used to be read as a data entry.
+        byte[] data = MaskOf(Enumerable.Range(0, 10).Select(_ => ((byte)1, (ushort)61440)).ToArray());
+
+        Assert.Null(RleMaskDecoder.Detect(data));
+        MaskInfo? withScene = RleMaskDecoder.Detect(data, 1024, 600);
+        Assert.NotNull(withScene);
+        Assert.Equal((1024, 600, 10, 1), (withScene.Value.Width, withScene.Value.Height, withScene.Value.RunCount, withScene.Value.UniqueIdCount));
+    }
+
+    [Fact]
+    public void RunsMayWrapAcrossRowsWhenTheSceneSizeIsKnown()
+    {
+        // Runs that do not close on the row boundary: 21 of Runaway 1's masks are encoded this way.
+        byte[] data = MaskOf((1, 700), (2, 700), (1, 700), (2, 300));
+
+        Assert.Null(RleMaskDecoder.DetectWithWidth(data, 800, 3));
+        MaskInfo? info = RleMaskDecoder.Detect(data, 800, 3);
+        Assert.NotNull(info);
+        Assert.Equal((800, 3), (info.Value.Width, info.Value.Height));
+    }
+
+    [Fact]
+    public void ARunStreamThatDoesNotFillTheSceneIsNotItsMask()
+    {
+        Assert.Null(RleMaskDecoder.DetectByTotal(MaskOf((1, 100), (2, 100)), 800, 3));
+        Assert.Null(RleMaskDecoder.DetectByTotal(MaskOf((1, 2400), (2, 100)), 800, 3));
+        // A zero-length run is never legal, however the lengths add up.
+        Assert.Null(RleMaskDecoder.DetectByTotal(MaskOf((1, 2400), (2, 0)), 800, 3));
+    }
+
+    [Fact]
+    public void ALayerFilterShowsEveryZoneTheLayerClaims()
+    {
+        // Id 3 is a walk region, id 4 a hotspot, id 5 both -- the shape of an exit, which the actor has
+        // to be able to stand on and click. Each layer on its own must show both of its zones.
+        byte[] data = MaskOf((3, 400), (4, 400), (5, 400));
+        byte[] table = TableOf((0, 3, 1), (1, 4, 2), (0, 5, 1), (1, 5, 2));
+
+        int Painted(MaskLayers layers, int from, int to)
+        {
+            DecodedImage img = RleMaskDecoder.Decode(data, 1200, 1, null, table, layers);
+            int n = 0;
+            for (int x = from; x < to; x++)
+                if (img.Pixels[x * 4 + 3] != 0) n++;
+            return n;
+        }
+
+        Assert.Equal(400, Painted(MaskLayers.Walk, 0, 400));      // the walk-only zone
+        Assert.Equal(400, Painted(MaskLayers.Walk, 800, 1200));   // the exit, still walkable
+        Assert.Equal(0, Painted(MaskLayers.Walk, 400, 800));      // the hotspot-only zone stays hidden
+        Assert.Equal(400, Painted(MaskLayers.Hotspot, 400, 800));
+        Assert.Equal(400, Painted(MaskLayers.Hotspot, 800, 1200)); // the exit, still clickable
+    }
+
+    [Fact]
+    public void AZoneInTwoLayersKeepsBothColoursInACombinedView()
+    {
+        byte[] data = MaskOf((3, 400), (4, 400), (5, 400));
+        byte[] table = TableOf((0, 3, 1), (1, 4, 2), (0, 5, 1), (1, 5, 2));
+
+        DecodedImage img = RleMaskDecoder.Decode(data, 1200, 1, null, table, MaskLayers.All);
+        (byte B, byte G, byte R, byte A) walk = RleMaskDecoder.GenerateWalkboxPalette()[1];
+        (byte B, byte G, byte R, byte A) hot = RleMaskDecoder.GeneratePalette()[2];
+
+        int walkPx = 0, hotPx = 0;
+        for (int x = 800; x < 1200; x++)
+        {
+            int o = x * 4;
+            if (img.Pixels[o] == walk.B && img.Pixels[o + 1] == walk.G && img.Pixels[o + 2] == walk.R) walkPx++;
+            if (img.Pixels[o] == hot.B && img.Pixels[o + 1] == hot.G && img.Pixels[o + 2] == hot.R) hotPx++;
+        }
+
+        // Banded, so neither membership is lost to the other.
+        Assert.True(walkPx > 0, "the exit lost its walk colour");
+        Assert.True(hotPx > 0, "the exit lost its hotspot colour");
+        Assert.Equal(400, walkPx + hotPx);
+
+        // A zone in one layer is still painted flat.
+        Assert.Equal(400, Enumerable.Range(0, 400).Count(x =>
+            img.Pixels[x * 4] == walk.B && img.Pixels[x * 4 + 1] == walk.G && img.Pixels[x * 4 + 2] == walk.R));
+    }
+
+    [Fact]
+    public void TheDenseFieldPagesAreNotTreatedAsCompetingMemberships()
+    {
+        // Pages 3 and 5 are set on nearly every id in a real scene. Counting them as memberships would
+        // band the whole screen, so a zone they cover keeps a flat colour, and they never mask a
+        // sparse layer.
+        byte[] table = TableOf((0, 7, 1), (3, 7, 1), (5, 7, 2), (3, 8, 1), (5, 8, 2));
+
+        Assert.Empty(RleMaskDecoder.OverlappingIds(table));
+
+        byte[] data = MaskOf((7, 400), (8, 400));
+        DecodedImage img = RleMaskDecoder.Decode(data, 800, 1, null, table, MaskLayers.All);
+        (byte B, byte G, byte R, byte A) walk = RleMaskDecoder.GenerateWalkboxPalette()[1];
+        Assert.Equal(400, Enumerable.Range(0, 400).Count(x =>
+            img.Pixels[x * 4] == walk.B && img.Pixels[x * 4 + 1] == walk.G && img.Pixels[x * 4 + 2] == walk.R));
+    }
+
+    [Fact]
+    public void OverlappingIdsNamesTheLayersThatClaimAZone()
+    {
+        byte[] table = TableOf((0, 5, 1), (1, 5, 2), (1, 6, 3), (2, 6, 1), (0, 9, 4));
+
+        Assert.Equal(
+            [(5, MaskLayers.Walk | MaskLayers.Hotspot), (6, MaskLayers.Hotspot | MaskLayers.Depth)],
+            RleMaskDecoder.OverlappingIds(table));
+    }
+
+    [Fact]
+    public void DetectsValidSyntheticMask()
+    {
+        byte[] data = CreateSyntheticMask(1024, 600);
+        MaskInfo? info = RleMaskDecoder.Detect(data);
+
+        Assert.NotNull(info);
+        Assert.Equal(1024, info.Value.Width);
+        Assert.Equal(600, info.Value.Height);
+        Assert.Equal(1200, info.Value.RunCount);
+        Assert.True(info.Value.UniqueIdCount >= 2);
+    }
+
+    [Fact]
+    public void DecodesSyntheticMask_PixelsMatchPalette()
+    {
+        byte[] data = CreateSyntheticMask(1024, 600);
+        var decoded = RleMaskDecoder.Decode(data, 1024, 600);
+
+        Assert.Equal(1024, decoded.Width);
+        Assert.Equal(600, decoded.Height);
+        Assert.Equal(1024 * 600 * 4, decoded.Pixels.Length);
+
+        var palette = RleMaskDecoder.GeneratePalette();
+        // Row 0, pixel 0 should be ID 1
+        var expected = palette[1];
+        Assert.Equal(expected.B, decoded.Pixels[0]);
+        Assert.Equal(expected.G, decoded.Pixels[1]);
+        Assert.Equal(expected.R, decoded.Pixels[2]);
+        Assert.Equal(255, decoded.Pixels[3]);
+
+        // Row 0, pixel 512 should be ID 2
+        int offset512 = 512 * 4;
+        var expected2 = palette[2];
+        Assert.Equal(expected2.B, decoded.Pixels[offset512 + 0]);
+        Assert.Equal(expected2.G, decoded.Pixels[offset512 + 1]);
+        Assert.Equal(expected2.R, decoded.Pixels[offset512 + 2]);
+        Assert.Equal(255, decoded.Pixels[offset512 + 3]);
+    }
+
+    [Fact]
+    public void ClassifiesSyntheticMaskAsMask()
+    {
+        byte[] data = CreateSyntheticMask(1024, 600);
+        EntryClassification c = EntryClassifier.Classify(data);
+
+        Assert.Equal(EntryKind.Mask, c.Kind);
+        Assert.NotNull(c.Image);
+        Assert.Equal(1024, c.Image.Width);
+        Assert.Equal(600, c.Image.Height);
+        Assert.True(c.Image.IsMask);
+    }
+
+    [Fact]
+    public void RejectsMalformedStreams()
+    {
+        // Not multiple of 3
+        Assert.Null(RleMaskDecoder.Detect(new byte[100]));
+
+        // Too short
+        Assert.Null(RleMaskDecoder.Detect(new byte[3]));
+
+        // Run length 0
+        byte[] zeroLen = [0x01, 0x00, 0x00, 0x02, 0x00, 0x04];
+        Assert.Null(RleMaskDecoder.Detect(zeroLen));
+    }
+
+    [Fact]
+    public void RealGameH38e01_ClassifiesAsMask_IfPresent()
+    {
+        string dir = @"F:\Games\Steam\steamapps\common\Runaway A Road Adventure\Resource";
+        string h38Path = Path.Combine(dir, "RESOURCE.H38");
+        if (!File.Exists(h38Path))
+            return;
+
+        using var fs = File.OpenRead(h38Path);
+        var entries = SceneArchive.ReadEntries(fs);
+        var e01 = entries.FirstOrDefault(e => e.Index == 1);
+        Assert.Equal(20070, e01.Size);
+
+        var data = new byte[e01.Size];
+        fs.Position = e01.Offset;
+        fs.ReadExactly(data);
+
+        EntryClassification c = EntryClassifier.Classify(data);
+        Assert.Equal(EntryKind.Mask, c.Kind);
+        Assert.NotNull(c.Image);
+        Assert.Equal(1024, c.Image.Width);
+        Assert.Equal(600, c.Image.Height);
+        Assert.True(c.Image.IsMask);
+    }
+
+    [Fact]
+    public void ExtractObjectMapping_UsesAttribute1_WhenPopulated()
+    {
+        // Build a 1536-byte table: Attribute 1 (offset 256..511) has object IDs.
+        var table = new byte[1536];
+
+        // IDs 3, 6, 11 all belong to object 2 (like the H18 door example).
+        table[256 + 3] = 2;
+        table[256 + 6] = 2;
+        table[256 + 11] = 2;
+        // ID 5 belongs to object 5.
+        table[256 + 5] = 5;
+
+        byte[]? map = RleMaskDecoder.ExtractObjectMapping(table);
+
+        Assert.NotNull(map);
+        Assert.Equal(256, map.Length);
+        Assert.Equal(2, map[3]);
+        Assert.Equal(2, map[6]);
+        Assert.Equal(2, map[11]);
+        Assert.Equal(5, map[5]);
+        // Unmapped IDs stay identity.
+        Assert.Equal(0, map[0]);
+        Assert.Equal(1, map[1]);
+        Assert.Equal(4, map[4]);
+    }
+
+    [Fact]
+    public void ExtractObjectMapping_DoesNotGroupByTheFootstepSurface()
+    {
+        // Page 1, the scene item index, is empty; page 5 is the footstep surface, and two zones sharing
+        // a floor are not one object. This used to fall back to page 5 and merge them.
+        var table = new byte[1536];
+        table[5 * 256 + 7] = 5;
+        table[5 * 256 + 8] = 5;
+
+        byte[]? map = RleMaskDecoder.ExtractObjectMapping(table);
+
+        Assert.NotNull(map);
+        Assert.Equal(7, map[7]);
+        Assert.Equal(8, map[8]);
+    }
+
+    [Fact]
+    public void ExtractObjectMapping_RejectsShortTable()
+    {
+        byte[]? map = RleMaskDecoder.ExtractObjectMapping(new byte[100]);
+        Assert.Null(map);
+    }
+
+    [Fact]
+    public void Decode_WithIdMap_UnifiesColors()
+    {
+        // Synthetic mask: 4 pixels wide, 1 row. IDs: [3, 3, 6, 6]
+        // Without idMap, IDs 3 and 6 produce different colors.
+        // With idMap mapping both to object 2, all 4 pixels share the same color.
+        byte[] data =
+        [
+            3, 0x02, 0x00,  // ID 3, length 2
+            6, 0x02, 0x00,  // ID 6, length 2
+        ];
+
+        // Decode without idMap
+        var noMap = RleMaskDecoder.Decode(data, 4, 1);
+        // Pixel 0 (ID 3) vs pixel 2 (ID 6) should differ.
+        Assert.NotEqual(noMap.Pixels[0], noMap.Pixels[8]);  // B channels differ
+
+        // Decode with idMap: both 3 and 6 → 2
+        var idMap = new byte[256];
+        for (int i = 0; i < 256; i++) idMap[i] = (byte)i;
+        idMap[3] = 2;
+        idMap[6] = 2;
+
+        var withMap = RleMaskDecoder.Decode(data, 4, 1, idMap);
+        // All 4 pixels should have identical BGRA.
+        for (int px = 1; px < 4; px++)
+        {
+            Assert.Equal(withMap.Pixels[0], withMap.Pixels[px * 4 + 0]); // B
+            Assert.Equal(withMap.Pixels[1], withMap.Pixels[px * 4 + 1]); // G
+            Assert.Equal(withMap.Pixels[2], withMap.Pixels[px * 4 + 2]); // R
+            Assert.Equal(withMap.Pixels[3], withMap.Pixels[px * 4 + 3]); // A
+        }
+
+        // And the color should be palette[2].
+        var palette = RleMaskDecoder.GeneratePalette();
+        Assert.Equal(palette[2].B, withMap.Pixels[0]);
+        Assert.Equal(palette[2].G, withMap.Pixels[1]);
+        Assert.Equal(palette[2].R, withMap.Pixels[2]);
+    }
+
+    [Fact]
+    public void DetectAttributePresence_IdentifiesAttributes()
+    {
+        var table = new byte[1536];
+        table[0 * 256 + 1] = 5;     // page 0: walkable region
+        table[1 * 256 + 2] = 8;     // page 1: scene item
+        table[2 * 256 + 3] = 2;     // page 2: depth plane
+        table[3 * 256 + 5] = 4;     // page 3: actor brightness
+        table[5 * 256 + 4] = 2;     // page 5: footstep surface
+
+        var presence = RleMaskDecoder.DetectAttributePresence(table);
+        Assert.True(presence.HasWalk);
+        Assert.True(presence.HasHotspot);
+        Assert.True(presence.HasDepth);
+        Assert.True(presence.HasLight);
+        Assert.True(presence.HasMaterial);
+    }
+
+    [Fact]
+    public void DetectAttributePresence_IgnoresTheUnwrittenPage()
+    {
+        // Page 4 is the exporter's leftover buffer, nonzero in every real table and meaning nothing.
+        var table = new byte[1536];
+        for (int i = 0; i < 256; i++)
+            table[4 * 256 + i] = (byte)(i * 7);
+
+        Assert.Equal(default, RleMaskDecoder.DetectAttributePresence(table));
+    }
+
+    [Fact]
+    public void DecodesWithMaskLayers_FiltersLayersAccurately()
+    {
+        // 5 pixels, one per page that carries meaning.
+        byte[] data =
+        [
+            1, 0x01, 0x00,
+            2, 0x01, 0x00,
+            3, 0x01, 0x00,
+            4, 0x01, 0x00,
+            5, 0x01, 0x00,
+        ];
+
+        var table = new byte[1536];
+        table[0 * 256 + 1] = 1;  // id 1 is in walk region 1
+        table[1 * 256 + 2] = 2;  // id 2 is scene item 2
+        table[2 * 256 + 3] = 1;  // id 3 is on depth plane 1
+        table[5 * 256 + 4] = 2;  // id 4 is footstep surface 2
+        table[3 * 256 + 5] = 4;  // id 5 is brightness class 4
+
+        // Test 1: MaskLayers.None -> all transparent (alpha = 0)
+        var noneImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.None);
+        for (int i = 0; i < 4; i++)
+        {
+            Assert.Equal(0, noneImg.Pixels[i * 4 + 3]);
+        }
+
+        // Test 2: MaskLayers.Walk only -> only pixel 0 is opaque
+        var walkImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.Walk);
+        Assert.Equal(255, walkImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(0, walkImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(0, walkImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(0, walkImg.Pixels[3 * 4 + 3]);
+
+        // Test 3: MaskLayers.Hotspot only -> only pixel 1 is opaque
+        var hotImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.Hotspot);
+        Assert.Equal(0, hotImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(255, hotImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(0, hotImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(0, hotImg.Pixels[3 * 4 + 3]);
+
+        // Test 4: Walk | Hotspot -> pixels 0 and 1 are opaque, pixels 2 and 3 are transparent
+        var comboImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.Walk | MaskLayers.Hotspot);
+        Assert.Equal(255, comboImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(255, comboImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(0, comboImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(0, comboImg.Pixels[3 * 4 + 3]);
+
+        // Test 5: All -> all 4 pixels are opaque
+        var allImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.All);
+        Assert.Equal(255, allImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(255, allImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(255, allImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(255, allImg.Pixels[3 * 4 + 3]);
+    }
+
+    [Fact]
+    public void Decode_WithoutAttributeTable_TogglesWalkMaskOff()
+    {
+        // 4 pixels: ID 1 (run of 4)
+        byte[] data = [1, 4, 0];
+
+        // Walk on -> pixels are opaque
+        var walkOn = RleMaskDecoder.Decode(data, 4, 1, layers: MaskLayers.Walk, transparentBackground: true);
+        Assert.Equal(255, walkOn.Pixels[0 * 4 + 3]);
+
+        // Walk off -> pixels are transparent
+        var walkOff = RleMaskDecoder.Decode(data, 4, 1, layers: MaskLayers.None, transparentBackground: true);
+        Assert.Equal(0, walkOff.Pixels[0 * 4 + 3]);
+
+        // If layers has only Hotspot (Walk toggled off) -> pixels are transparent
+        var hotspotOnly = RleMaskDecoder.Decode(data, 4, 1, layers: MaskLayers.Hotspot, transparentBackground: true);
+        Assert.Equal(0, hotspotOnly.Pixels[0 * 4 + 3]);
+    }
+}

@@ -1,4 +1,4 @@
-# Animated sprites
+﻿# Animated sprites
 
 Animated characters, ambient animations (torches, water ripples, flags), and interactive objects are stored as segment-encoded multi-frame sprite assets.
 
@@ -199,10 +199,10 @@ Timing is **not stored** anywhere in the asset. Neither records nor segments spe
 
 ## Decoders
 
-- [`SpriteAsset`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
-- [`SpriteRecord`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
-- [`SpriteSegment`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
-- Tests: [`SpriteDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)
+- [`SpriteAsset`](../../src/PenduloStudiosExplorer.Core/Formats/SpriteDecoder.cs)
+- [`SpriteRecord`](../../src/PenduloStudiosExplorer.Core/Formats/SpriteDecoder.cs)
+- [`SpriteSegment`](../../src/PenduloStudiosExplorer.Core/Formats/SpriteDecoder.cs)
+- Tests: [`SpriteDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs)
 
 ## The character sprite libraries
 

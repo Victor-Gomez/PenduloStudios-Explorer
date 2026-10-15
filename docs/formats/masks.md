@@ -1,4 +1,4 @@
-# Scene masks and walkboxes
+﻿# Scene masks and walkboxes
 
 Scene masks partition backgrounds into interactive zones, walkboxes (character pathfinding meshes), depth planes (walk-behind occluders), and material/acoustics boundaries.
 
@@ -312,7 +312,7 @@ Masks can be previewed standalone or composited at 55% opacity over the scene ba
 
 ## Decoders
 
-- [`RleMaskDecoder`](../../src/RunawayExplorer.Core/Formats/RleMaskDecoder.cs)
-- [`SparseMaskDecoder`](../../src/RunawayExplorer.Core/Formats/SparseMaskDecoder.cs)
-- [`PngDecoder`](../../src/RunawayExplorer.Core/Formats/PngDecoder.cs)
-- Tests: [`RleMaskDecoderTests`](../../tests/RunawayExplorer.Core.Tests/RleMaskDecoderTests.cs), [`SpanMaskDecoderTests`](../../tests/RunawayExplorer.Core.Tests/SpanMaskDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- [`RleMaskDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/RleMaskDecoder.cs)
+- [`SparseMaskDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/SparseMaskDecoder.cs)
+- [`PngDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/PngDecoder.cs)
+- Tests: [`RleMaskDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/RleMaskDecoderTests.cs), [`SpanMaskDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/SpanMaskDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs)

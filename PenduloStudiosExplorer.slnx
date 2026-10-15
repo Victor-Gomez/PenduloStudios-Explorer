@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PenduloStudiosExplorer.Core/PenduloStudiosExplorer.Core.csproj" />
+    <Project Path="src/PenduloStudiosExplorer/PenduloStudiosExplorer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PenduloStudiosExplorer.Core.Tests/PenduloStudiosExplorer.Core.Tests.csproj" />
+    <Project Path="tests/PenduloStudiosExplorer.Tests/PenduloStudiosExplorer.Tests.csproj" />
+  </Folder>
+</Solution>

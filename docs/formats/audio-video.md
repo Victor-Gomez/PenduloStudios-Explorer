@@ -1,4 +1,4 @@
-# Audio and video
+﻿# Audio and video
 
 The engine stores music, sound effects, voice acting, and cutscene video across several dedicated archives and container formats.
 
@@ -129,7 +129,7 @@ LibVLC's bundled `libavcodec`/`libavformat` natively demuxes and plays Smacker v
 
 ## Decoders
 
-- [`WavWriter`](../../src/RunawayExplorer.Core/Formats/WavWriter.cs)
-- [`VideoKeyfile`](../../src/RunawayExplorer.Core/FileSystem/VideoKeyfile.cs)
-- [`SmackerVideo`](../../src/RunawayExplorer.Core/Formats/SmackerVideo.cs)
-- Tests: [`WriterTests`](../../tests/RunawayExplorer.Core.Tests/WriterTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- [`WavWriter`](../../src/PenduloStudiosExplorer.Core/Formats/WavWriter.cs)
+- [`VideoKeyfile`](../../src/PenduloStudiosExplorer.Core/FileSystem/VideoKeyfile.cs)
+- [`SmackerVideo`](../../src/PenduloStudiosExplorer.Core/Formats/SmackerVideo.cs)
+- Tests: [`WriterTests`](../../tests/PenduloStudiosExplorer.Core.Tests/WriterTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs)

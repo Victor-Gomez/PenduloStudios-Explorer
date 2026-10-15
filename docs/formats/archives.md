@@ -1,4 +1,4 @@
-# Archive containers
+﻿# Archive containers
 
 The game engine uses nameless offset-table archives with no extensions, file paths, or magic headers. Every archive is a flat container indexed by entry number (`e00`, `e01`, …).
 
@@ -280,18 +280,18 @@ In *Runaway 3*, `RESOURCE.005` (478,152 bytes) stores the game's chapter trigger
 
 ## Decoders
 
-- [`SceneArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- [`AudioArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- [`VoiceArchive`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- [`VideoKeyfile`](../../src/RunawayExplorer.Core/FileSystem/VideoKeyfile.cs)
-- [`SmackerVideo`](../../src/RunawayExplorer.Core/Formats/SmackerVideo.cs)
-- [`ChapterInteractionArchive`](../../src/RunawayExplorer.Core/FileSystem/ChapterInteractionArchive.cs)
-- [`SavegameArchive`](../../src/RunawayExplorer.Core/FileSystem/SavegameArchive.cs)
-- [`RouteDecoder`](../../src/RunawayExplorer.Core/Formats/RouteDecoder.cs)
-- [`CorridorSpanDecoder`](../../src/RunawayExplorer.Core/Formats/CorridorSpanDecoder.cs)
-- [`SceneTable`](../../src/RunawayExplorer.Core/Formats/SceneTable.cs)
-- [`HollywoodAttributeTableDecoder`](../../src/RunawayExplorer.Core/Formats/HollywoodAttributeTableDecoder.cs)
-- [`HollywoodSceneMetadata`](../../src/RunawayExplorer.Core/Formats/HollywoodSceneMetadata.cs)
-- [`HollywoodFrankensteinReward`](../../src/RunawayExplorer.Core/Formats/HollywoodFrankensteinReward.cs)
-- [`ArchiveWindowStream`](../../src/RunawayExplorer.Core/FileSystem/Archives.cs)
-- Tests: [`ContainerTests`](../../tests/RunawayExplorer.Core.Tests/ContainerTests.cs), [`Runaway1Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway1Tests.cs), [`Runaway2Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway2Tests.cs), [`Runaway3Tests`](../../tests/RunawayExplorer.Core.Tests/Runaway3Tests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs), [`SceneTableTests`](../../tests/RunawayExplorer.Core.Tests/SceneTableTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- [`SceneArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
+- [`AudioArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
+- [`VoiceArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
+- [`VideoKeyfile`](../../src/PenduloStudiosExplorer.Core/FileSystem/VideoKeyfile.cs)
+- [`SmackerVideo`](../../src/PenduloStudiosExplorer.Core/Formats/SmackerVideo.cs)
+- [`ChapterInteractionArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/ChapterInteractionArchive.cs)
+- [`SavegameArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/SavegameArchive.cs)
+- [`RouteDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/RouteDecoder.cs)
+- [`CorridorSpanDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/CorridorSpanDecoder.cs)
+- [`SceneTable`](../../src/PenduloStudiosExplorer.Core/Formats/SceneTable.cs)
+- [`HollywoodAttributeTableDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/HollywoodAttributeTableDecoder.cs)
+- [`HollywoodSceneMetadata`](../../src/PenduloStudiosExplorer.Core/Formats/HollywoodSceneMetadata.cs)
+- [`HollywoodFrankensteinReward`](../../src/PenduloStudiosExplorer.Core/Formats/HollywoodFrankensteinReward.cs)
+- [`ArchiveWindowStream`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
+- Tests: [`ContainerTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ContainerTests.cs), [`Runaway1Tests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway1Tests.cs), [`Runaway2Tests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway2Tests.cs), [`Runaway3Tests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway3Tests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs), [`SceneTableTests`](../../tests/PenduloStudiosExplorer.Core.Tests/SceneTableTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs)
