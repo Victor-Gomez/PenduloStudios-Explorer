@@ -4,7 +4,7 @@
         Title="About Runaway Explorer"
         WindowStartupLocation="CenterOwner"
         SizeToContent="Height"
-        Width="540"
+        Width="620"
         CanResize="False"
         ShowInTaskbar="False"
         Icon="avares://RunawayExplorer/Assets/RunawayExplorer.ico">
@@ -54,17 +54,17 @@
         </StackPanel>
 
         <StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="14">
-                <Image Source="avares://RunawayExplorer/Assets/RunawayExplorer.png" Width="96" Height="96"
-                       VerticalAlignment="Top"/>
-                <StackPanel VerticalAlignment="Center">
+            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,4">
+                <Image Grid.Column="0" Source="avares://RunawayExplorer/Assets/RunawayExplorer.png" Width="96" Height="96"
+                       VerticalAlignment="Top" Margin="0,0,14,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="Runaway Explorer" FontSize="20" FontWeight="Bold"/>
                     <SelectableTextBlock x:Name="VersionText" Opacity="0.8" Margin="0,2,0,0"/>
                     <TextBlock Text="Created by Victor Gomez" FontWeight="Medium" Opacity="0.85" Margin="0,3,0,0"/>
                     <TextBlock Text="An asset viewer for Runaway: A Road Adventure (Pendulo Studios, 2001)."
                                Opacity="0.7" TextWrapping="Wrap" Margin="0,4,0,0"/>
                 </StackPanel>
-            </StackPanel>
+            </Grid>
 
             <TextBlock Classes="section" Text="Environment"/>
             <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
@@ -82,15 +82,8 @@
                 <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="value" x:Name="LogPathText"/>
             </Grid>
 
-            <TextBlock Classes="section" Text="About the formats"/>
-            <TextBlock TextWrapping="Wrap" Opacity="0.85" LineHeight="18">
-                Every container and image codec here was reverse-engineered from the Steam release; there is
-                no official documentation. The scene archives hold three image formats -- raw RGB565 rasters,
-                positioned row-record overlays, and segment-encoded sprite animations -- and this viewer decodes
-                all three byte-exact. What is still unknown (the per-scene data tables, the RESOURCE.000 sprite
-                codec) is listed in docs/formats.<LineBreak/><LineBreak/>
-                <Run FontStyle="Italic">Runaway: A Road Adventure</Run> is a trademark of its respective owners.
-                This is an unaffiliated fan-made tool and ships no game data.
+            <TextBlock TextWrapping="Wrap" Opacity="0.65" FontSize="11.5" Margin="0,16,0,0">
+                <Run FontStyle="Italic">Runaway: A Road Adventure</Run> is a trademark of its respective owners. This is an unaffiliated fan-made tool and ships no game data.
             </TextBlock>
 
             <StackPanel Orientation="Horizontal" Spacing="4" Margin="-8,10,0,0">

@@ -220,13 +220,44 @@ Scene 2010's dispatcher case calls `0x43dff0`, then `0x444b00(1)` and `0x40f110`
 - **Escape** sets `0x9d2735`; `0x44d7d0` (and `0x4399f0` in the video loops) clears it, blacks the
   screen and opens the options menu `0x42daf0`, and returns 1 only if the scene word became 255 or
   `0x856708` is set (a game was loaded or the player quit). Otherwise the sequence goes on.
-- **`0x43aa10`** plays `DATAVB08.001` up to frame 2250 like `0x43a650`, but draws over each frame,
-  from frame 420: `0x440410` steps twelve credit sprites (entries 26..37, a 147-pass cycle each,
-  drawn by `0x43ffe0` for passes 0..11 and 100..112) and `0x4406e0` a 282 x 188 window at (627, 140)
-  (`0x4404a0`) cross-fading through entries 10..25, sixteen 282 x 188 RGB565 pictures that
-  `0x43fe90` loads and `0x43fdb0`/`0x43fb70` blend into 17 steps; `b[0x5d2f04]` (0..63) rises after
-  frame 343 and falls after 2185. `0x43bb30` loads `DATAVB08.000` (3 frames) into `0x92d280` beside
-  it. Then `0x439820(2)` waits 2 steps of the 250 ms counter and `0x43a650` goes on to 2566.
+- **`0x43aa10`** plays `DATAVB08.001` up to frame 2250 like `0x43a650`, but draws the drive's
+  credits over each frame. Each frame it clears the back buffer `0x74d3f8` (`0x404ff0`), blits
+  the video into it from (0, 0, R, 600) to (0, 84, R, 684), calls `0x440410` and `0x4406e0`, and
+  flips. Everything steps once a video frame. "Frame" below is the counter `0x8bc170`, which is
+  set after the flip to the frame just shown, so it holds the one before the frame being drawn.
+  The pendulo engine plays it as a `VideoStep::kPlayOverlay` step, with `SceneB01` as the
+  `VideoOverlay`.
+  - **The crop.** R starts at 1024. Past frame 343, R = `(0x80 - v) << 3` with `v = b[0x5d2f04]`
+    before it goes up (to at most 63), so the video narrows to 520 px and the right of the screen is
+    black. Past frame 2185 the same is done before v goes down. Once v is 0, R keeps its last value
+    (1016) to the end.
+  - **Credits** (`0x440410`, from frame 420, done flag `0x5c69b0`). The pass `w[0x5d2eb8]` goes up
+    first. Passes 1..11 draw frame w, 12..100 frame 11, 101..112 frame `112 - w`, and 113..146
+    nothing. At 147 the next sprite (`w[0x5d2ec0]`, entries 26..37 via `0x68f0e0[]`) starts at pass 0,
+    or after the twelfth the flag is set. `0x43ffe0` reads the frame's 14-byte header
+    `{u32 offset, u16 x, width, top, bottom, runs}` (12 of them, 168 bytes) and clears
+    `(x, top) .. (x + width, bottom)` to black. Then it copies `runs` runs `{u16 x, y, u8 n, n RGB565}`
+    from `168 + offset`, and BltFasts the box to the primary. The coordinates are 1024 x 600 ones
+    (+84 on screen). The sprites sit at x 539..1005, y 319..579.
+  - **The window** (`0x4406e0`, from frame 420, done flag `0x5c69b4`). `0x43fe90` reads entries
+    10..25 to `base + 0xe8fb0 + i * 0x102de0` (`base = d[0x679e4c]`), each in the last of ten
+    106,032-byte slots. `0x43fdb0` clears pictures 16 and 17 to black and calls `0x43fb70(a, b)` for
+    (255, 0), (0, 1) .. (16, 17). That fills slots 0..8 of block b with `a * (100 - L)% + b * L%` for
+    L = 10..90: each RGB565 field is scaled and truncated on its own (`* 0x51eb851f >> 5`), and
+    a = 255 is black. So step k of block p fades picture p - 1 (black for p = 0) into picture p
+    (black for p = 16), and step 9 is the picture. On even frames (`0x590320`, the 64-bit remainder
+    by 2) `0x4404a0` draws step `min(s, 9)` of block `w[0x5d2ec2]`, then `s = w[0x5d2ee0]` goes up.
+    At 10 with block 16 the flag is set; at 54 the next block starts at step 0. Odd frames redraw
+    step `min(s - 1, 9)`, or block - 1's step 9 when s = 0. `0x4404a0` copies the 282 x 188 step
+    opaque to (627, 140) (1024 x 600: (627, 56)) and BltFasts it to the primary. So a picture fades
+    in over 20 frames and shows for 108 in all; the last fades out by about frame 2168.
+  - Nothing resets these words: they are statics, zero when the exe starts.
+  - `0x43bb30` (also `0x7a1cc0`, the surface restore hook) loads `DATAVB08.000` (3 frames) into
+    `0x92d280`. The overlay does not use it. `0x43b250(0x92d280, b[0xa6708d], 0)`, in the line
+    code around `0x439c40`, BltFasts its frames, presumably over the held stills while a line is
+    said. Not read further.
+
+  Then `0x439820(2)` waits 2 steps of the 250 ms counter and `0x43a650` goes on to 2566.
 - **Cue frames.** `0x435f00(frame, 0, n)` is true when `n` equals its counter `0x6babb6`, cue `n` has
   not fired (`0x890340[n]`), and the video's frame (`0x8bc174:0x8bc170`) is at or past `frame`; it
   then marks it and steps the counter. So a callback's cues fire once each, in order, even when a
