@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using RunawayExplorer.Core.FileSystem;
+using RunawayExplorer.Services;
 
 namespace RunawayExplorer.ViewModels;
 
@@ -138,6 +139,9 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
                     return GetVectorIcon(ArchiveVectorIcon);
                 return GetVectorIcon(IsExpanded ? FolderOpenVectorIcon : FolderClosedVectorIcon);
             }
+
+            if (ResourceTypeFilter.IsNavigationMesh(Node))
+                return GetVectorIcon("ModelTypeIcon");
 
             return GetVectorIcon(KindIcons.TryGetValue(Node.Kind, out string? key) ? key : "RawFileTypeIcon");
         }

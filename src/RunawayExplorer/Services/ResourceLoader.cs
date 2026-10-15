@@ -473,6 +473,7 @@ public static class ResourceLoader
                             try { bg = vfs.SceneBackgroundFor(node); } catch { }
 
                             DecodedImage? walkMask = null;
+                            Dictionary<int, (int X, int Y)>? centroids = null;
                             FsNode? archive = node.Parent;
                             if (archive is not null && bg is not null)
                             {
@@ -486,12 +487,13 @@ public static class ResourceLoader
                                         byte[]? attrBytes = attrChild is not null ? vfs.ReadBytes(attrChild) : null;
                                         byte[]? idMap = attrBytes is not null ? RleMaskDecoder.ExtractObjectMapping(attrBytes) : null;
                                         walkMask = RleMaskDecoder.Decode(maskBytes, bg.Width, bg.Height, idMap, attrBytes, MaskLayers.Walk, transparentBackground: true);
+                                        centroids = RleMaskDecoder.ComputeWalkZoneCentroids(maskBytes, bg.Width, bg.Height, attrBytes);
                                     }
                                     catch { }
                                 }
                             }
 
-                            return new RouteResource(matrix, bg, RouteDecoder.FormatSummary(matrix), node, walkMask);
+                            return new RouteResource(matrix, bg, RouteDecoder.FormatSummary(matrix), node, walkMask, centroids);
                         }
                     }
 

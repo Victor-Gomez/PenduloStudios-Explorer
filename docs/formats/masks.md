@@ -280,6 +280,11 @@ The id boundaries in the mask fall at `x 607|608` and `x 777|778`, so each cross
 one pixel inside the destination region, and the two-hop pairs carry no points of their own -- both
 exactly as the format expects. Unused point slots are padded with `(-1, -1)`, not zeroes.
 
+To visualize the navigation mesh on top of the scene, `RleMaskDecoder.ComputeWalkZoneCentroids`
+accumulates 2D center-of-mass moments $(\bar{x}, \bar{y})$ for each functional walk region in
+$O(\text{runCount})$ time during mask decoding, which `RouteGraphRenderer` renders as circular zone
+badges joined across the portal boundary seams.
+
 #### Decoders & tests
 
 `RleMaskDecoder.Detect` tries the scanline rule first, because it is the strongest test available

@@ -42,7 +42,8 @@ public sealed record RouteResource(
     DecodedImage? Background,
     string Summary,
     FsNode Node,
-    DecodedImage? WalkMask = null) : ResourceContent;
+    DecodedImage? WalkMask = null,
+    IReadOnlyDictionary<int, (int X, int Y)>? Centroids = null) : ResourceContent;
 
 /// <summary>Loading the resource failed; <see cref="Message"/> is shown to the user in the text panel.</summary>
 public sealed record ErrorResource(string Message) : ResourceContent;

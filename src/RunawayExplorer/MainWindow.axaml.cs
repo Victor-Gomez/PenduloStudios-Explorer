@@ -2307,7 +2307,13 @@ public partial class MainWindow : Window
         var comboItems = new List<RoutePickerItem>();
         foreach (Route r in route.Matrix.Routes.Where(r => r.IsActive))
         {
-            string label = $"Z{r.FromZone} \u2192 Z{r.ToZone} ({r.Waypoints.Count} pt{(r.Waypoints.Count == 1 ? "" : "s")})";
+            string hopsDesc = r.ZoneHops.Count switch
+            {
+                0 => "direct",
+                1 => "direct (1 hop)",
+                _ => $"{r.ZoneHops.Count} hops"
+            };
+            string label = $"Z{r.FromZone} \u2192 Z{r.ToZone} ({hopsDesc})";
             comboItems.Add(new RoutePickerItem(r, label));
         }
         RoutePickerCombo.ItemsSource = comboItems;
@@ -2366,7 +2372,7 @@ public partial class MainWindow : Window
 
         UpdateRouteModeView();
 
-        ImageInfoText.Text = $"Walk route mesh: {route.Matrix.TotalActiveRoutes} active routes across {route.Matrix.ZoneCount} zones ({route.Matrix.TotalWaypoints} waypoints).";
+        ImageInfoText.Text = $"Walk route mesh: {route.Matrix.TotalActiveRoutes} active routes across {route.Matrix.ZoneCount} zones ({route.Matrix.TotalWaypoints} boundary points).";
 
         ImagePanel.IsVisible = true;
         _imageZoom.Fit();
@@ -2387,7 +2393,18 @@ public partial class MainWindow : Window
             _currentRoute.Matrix,
             mode,
             selectedRoute,
-            OnCanvasRouteClicked);
+            OnCanvasRouteClicked,
+            _currentRoute.Centroids);
+
+        if (mode == RouteDisplayMode.Single && selectedRoute is not null)
+        {
+            string hopsText = selectedRoute.ZoneHops.Count > 0 ? string.Join(" \u2192 ", selectedRoute.ZoneHops) : "(direct)";
+            ImageInfoText.Text = $"Selected Route: Zone {selectedRoute.FromZone} \u2192 Zone {selectedRoute.ToZone} | Hops: {hopsText} | Boundary Points: {selectedRoute.Waypoints.Count}";
+        }
+        else
+        {
+            ImageInfoText.Text = $"Walk route mesh: {_currentRoute.Matrix.TotalActiveRoutes} active routes across {_currentRoute.Matrix.ZoneCount} zones ({_currentRoute.Matrix.TotalWaypoints} boundary points).";
+        }
     }
 
     private void OnCanvasRouteClicked(Route route)

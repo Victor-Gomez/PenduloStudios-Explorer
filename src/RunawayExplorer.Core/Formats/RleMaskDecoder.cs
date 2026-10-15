@@ -393,6 +393,78 @@ public static class RleMaskDecoder
     }
 
     /// <summary>
+    /// Computes the 2D center-of-mass centroids for each functional walk region in the scene mask.
+    /// </summary>
+    public static Dictionary<int, (int X, int Y)> ComputeWalkZoneCentroids(
+        ReadOnlySpan<byte> maskData,
+        int width,
+        int height,
+        byte[]? table1536 = null)
+    {
+        var centroids = new Dictionary<int, (int X, int Y)>();
+        if (maskData.Length < 3 || width <= 0 || height <= 0)
+            return centroids;
+
+        var sumX = new long[256];
+        var sumY = new long[256];
+        var count = new int[256];
+
+        int curX = 0;
+        int curY = 0;
+        bool hasTable = table1536 is not null && table1536.Length >= 1536;
+
+        for (int p = 0; p + 3 <= maskData.Length; p += 3)
+        {
+            byte id = maskData[p];
+            ushort len = BinaryPrimitives.ReadUInt16LittleEndian(maskData.Slice(p + 1, 2));
+            if (len == 0) break;
+
+            int walkZone = hasTable ? table1536![PageWalk * 256 + id] : id;
+
+            if (walkZone > 0)
+            {
+                int remaining = len;
+                int x = curX;
+                int y = curY;
+                while (remaining > 0)
+                {
+                    int span = Math.Min(remaining, width - x);
+                    long runSumX = (long)span * x + ((long)span * (span - 1)) / 2;
+                    long runSumY = (long)span * y;
+
+                    sumX[walkZone] += runSumX;
+                    sumY[walkZone] += runSumY;
+                    count[walkZone] += span;
+
+                    remaining -= span;
+                    x += span;
+                    if (x >= width)
+                    {
+                        x = 0;
+                        y++;
+                        if (y >= height) break;
+                    }
+                }
+            }
+
+            curX += len;
+            curY += curX / width;
+            curX %= width;
+            if (curY >= height) break;
+        }
+
+        for (int z = 1; z < 256; z++)
+        {
+            if (count[z] > 0)
+            {
+                centroids[z] = ((int)(sumX[z] / count[z]), (int)(sumY[z] / count[z]));
+            }
+        }
+
+        return centroids;
+    }
+
+    /// <summary>
     /// Decodes the RLE mask into a 32-bit BGRA image using high-contrast deterministic colors.
     /// Optionally maps IDs through <paramref name="idMap"/> to unify object sub-zones and intersections,
     /// and filters visible layers using <paramref name="table1536"/> and <paramref name="layers"/>.

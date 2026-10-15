@@ -213,6 +213,40 @@ public class ResourceTypeFilterTests
         Assert.True(animations.Matches(new FsNode { Kind = EntryKind.Animation }));
         Assert.False(animations.Matches(new FsNode { Kind = EntryKind.Overlay }));
     }
+
+    [Fact]
+    public void NavigationMeshes_FilterMatchesRouteAndSceneTables()
+    {
+        ResourceTypeFilter navFilter = ResourceTypeFilter.Categories.First(c => c.Label == "Navigation meshes");
+        Assert.Equal("ModelTypeIcon", navFilter.IconResourceKey);
+
+        // Runaway 1 route table (43,659 bytes)
+        Assert.True(navFilter.Matches(new FsNode { Kind = EntryKind.Data, Size = RouteDecoder.TotalSizeR1 }));
+        // Runaway 2 & 3 navigation mesh (335,529 bytes)
+        Assert.True(navFilter.Matches(new FsNode { Kind = EntryKind.Data, Size = RouteDecoder.TotalSizeR2 }));
+        // TNBT & Yesterday waypoint table (194,560 bytes)
+        Assert.True(navFilter.Matches(new FsNode { Kind = EntryKind.Data, Size = RouteDecoder.TotalSizeTnbtWaypoints }));
+        // TNBT & Yesterday transition hop table (589,824 bytes)
+        Assert.True(navFilter.Matches(new FsNode { Kind = EntryKind.Data, Size = RouteDecoder.TotalSizeTnbtHops }));
+        // Walkway perspective corridor table (704 bytes)
+        Assert.True(navFilter.Matches(new FsNode { Kind = EntryKind.Data, Size = CorridorSpanDecoder.TotalSize }));
+        // Scene table from RESOURCE.TAB
+        Assert.True(navFilter.Matches(new FsNode { Kind = EntryKind.SceneTable, Size = 120 }));
+
+        // Other data should not match
+        Assert.False(navFilter.Matches(new FsNode { Kind = EntryKind.Data, Size = 1536 }));
+        Assert.False(navFilter.Matches(new FsNode { Kind = EntryKind.Background, Size = RouteDecoder.TotalSizeR1 }));
+    }
+
+    [Fact]
+    public void NavigationMeshes_CategoryExistsInSpanish()
+    {
+        var spanish = ResourceTypeFilter.GetCategories("es");
+        ResourceTypeFilter? navFilter = spanish.FirstOrDefault(c => c.Label == "Mallas de navegación");
+        Assert.NotNull(navFilter);
+        Assert.Equal("ModelTypeIcon", navFilter.IconResourceKey);
+        Assert.True(navFilter.Matches(new FsNode { Kind = EntryKind.Data, Size = RouteDecoder.TotalSizeR2 }));
+    }
 }
 
 public class KeyboardShortcutsTests
