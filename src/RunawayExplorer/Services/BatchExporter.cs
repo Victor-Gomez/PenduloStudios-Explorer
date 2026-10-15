@@ -63,7 +63,8 @@ public static class BatchExporter
 
             index++;
             string relativePath = RelativePath(rootPath, file.GetPath());
-            string relativeDir = Path.GetDirectoryName(relativePath) ?? string.Empty;
+            int lastSlash = relativePath.LastIndexOf('\\');
+            string relativeDir = lastSlash >= 0 ? relativePath[..lastSlash] : string.Empty;
             string destinationDir = Path.Combine(outputDirectory, SanitizeRelativePath(relativeDir));
 
             BatchExportResult result;
@@ -407,7 +408,8 @@ public static class BatchExporter
             if (rel.Length > 0)
                 return rel;
         }
-        return Path.GetFileName(fullPath);
+        int lastSlash = fullPath.LastIndexOf('\\');
+        return lastSlash >= 0 ? fullPath[(lastSlash + 1)..] : fullPath;
     }
 
     private static string SanitizeRelativePath(string relativePath)

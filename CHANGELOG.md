@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.1] - 2026-10-15
+
+### Fixed
+- **Linux Batch Export Path Resolution**: Fixed destination directory path calculation on Linux where backslash-delimited virtual paths caused files to be exported directly to the output root instead of preserving the virtual directory hierarchy.
+- **CI Test Suite**: All unit and headless Avalonia UI tests now pass 100% on both Windows and Linux runners.
+
+### Changed
+- **About Window**: Widened dialog from 540px to 620px and unconstrained header layout to prevent text clipping; removed technical formats section.
+
 ## [6.5.0] - 2026-10-15
 
 ### Added
