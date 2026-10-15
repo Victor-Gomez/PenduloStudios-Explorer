@@ -65,6 +65,7 @@ public sealed class SpriteAsset : IAnimationAsset
         int bx = int.MaxValue, by = int.MaxValue, bx1 = 0, by1 = 0;
         foreach (SpriteRecord r in records)
         {
+            if (r.SegmentCount == 0) continue;
             bx = Math.Min(bx, r.X0);
             by = Math.Min(by, r.Y0);
             bx1 = Math.Max(bx1, r.X0 + r.W);
@@ -249,7 +250,7 @@ public sealed class SpriteAsset : IAnimationAsset
                     int y1 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 10));
                     int c = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 12));
                     int w = x1 >= x0 ? x1 - x0 : 0;
-                    if (fo < prevFo || fo > data.Length || (x1 < x0 && c > 0) || y1 < y0 || y1 >= 8192 || x1 > 8192)
+                    if (fo < prevFo || fo > data.Length || (x1 < x0 && c > 0) || (y1 < y0 && c > 0) || y1 >= 8192 || x1 > 8192)
                     {
                         validRecords = false;
                         break;

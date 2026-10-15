@@ -73,7 +73,16 @@ them in total, and the strict reading loses records in every one of those 58. Th
 `RESOURCE.E07` entry 6 (945 records read as 2), `RESOURCE.I03` entries 7-11 (501 read as 1) and
 `RESOURCE.E07` entry 7 (952 read as 434).
 
-`SpriteDecoder.cs` gets both right; this section is here because nothing said so.
+In ***Runaway 3***, blank frames (`SegmentCount == 0`) are written by the compiler with dummy coordinates
+set to the scene resolution:
+`X0 = SceneWidth (e.g. 1280), X1 = 1, Y0 = SceneHeight (e.g. 960), Y1 = 1`.
+Because $X_1 < X_0$ and $Y_1 < Y_0$, any structural check validating coordinate ordering (`X1 >= X0` and `Y1 >= Y0`)
+must gate on `SegmentCount > 0`, or else animations with blank frames (such as `RESOURCE.B04` e07/e10/e11/e13/e14
+and most `RESOURCE.002` cutscene animations) are rejected as invalid and misclassified as raw data.
+Furthermore, blank frames must be ignored when computing the animation's union canvas bounding box; otherwise,
+the dummy coordinates (e.g. $X_0 = 1280$) distort the bounding box from the true sprite content to the entire screen.
+
+`SpriteDecoder.cs` gets all of these right; this section is here because nothing said so.
 
 ## Finding the record count
 

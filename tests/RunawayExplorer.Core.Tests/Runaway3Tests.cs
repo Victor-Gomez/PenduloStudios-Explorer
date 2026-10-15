@@ -166,6 +166,71 @@ public class Runaway3Tests
     }
 
     /// <summary>
+    /// Builds a synthetic multi-frame Runaway 3 sprite with an empty frame (c == 0)
+    /// carrying dummy scene-size coordinates (x0=1280, x1=1, y0=960, y1=1).
+    /// </summary>
+    public static byte[] SyntheticSpriteR3WithEmptyFrames()
+    {
+        ushort frameCount = 3;
+        int headerSize = 2 + frameCount * 14;
+
+        Span<byte> u16 = stackalloc byte[2];
+        Span<byte> u32 = stackalloc byte[4];
+
+        // Frame 0 segments (2 pixels red at x=10, y=5)
+        using var f0Segs = new MemoryStream();
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 10); f0Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 5); f0Segs.Write(u16);
+        f0Segs.WriteByte(0);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 2); f0Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 0xF800); f0Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 0xF800); f0Segs.Write(u16);
+        byte[] f0Data = f0Segs.ToArray();
+
+        // Frame 2 segments (1 pixel green at x=15, y=6)
+        using var f2Segs = new MemoryStream();
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 15); f2Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 6); f2Segs.Write(u16);
+        f2Segs.WriteByte(0);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); f2Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 0x07E0); f2Segs.Write(u16);
+        byte[] f2Data = f2Segs.ToArray();
+
+        using var ms = new MemoryStream();
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, frameCount); ms.Write(u16);
+
+        // Frame 0 record: fo = headerSize, x0=10, x1=12, y0=5, y1=5, segCount=1
+        uint fo0 = (uint)headerSize;
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, fo0); ms.Write(u32);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 10); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 12); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 5); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 5); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);
+
+        // Frame 1 record (empty frame): fo = fo0 + f0Data.Length, dummy coords 1280, 1, 960, 1, segCount=0
+        uint fo1 = fo0 + (uint)f0Data.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, fo1); ms.Write(u32);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1280); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 960); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 0); ms.Write(u16);
+
+        // Frame 2 record: fo = fo1, x0=15, x1=16, y0=6, y1=6, segCount=1
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, fo1); ms.Write(u32);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 15); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 16); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 6); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 6); ms.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);
+
+        ms.Write(f0Data);
+        ms.Write(f2Data);
+        return ms.ToArray();
+    }
+
+    /// <summary>
     /// Builds a synthetic continuous RLE mask:
     /// Runs of 3 bytes: { u8 id, u16 len } summing to width * height.
     /// </summary>
@@ -405,6 +470,38 @@ public class Runaway3Tests
         Assert.Equal((byte)'P', apng[1]);
         Assert.Equal((byte)'N', apng[2]);
         Assert.Equal((byte)'G', apng[3]);
+    }
+
+    [Fact]
+    public void SpriteDecoder_ParsesRunaway3WithEmptyFrames()
+    {
+        byte[] spriteData = SyntheticSpriteR3WithEmptyFrames();
+        var asset = SpriteAsset.Parse(spriteData);
+        Assert.NotNull(asset);
+        Assert.True(asset.IsRunaway3);
+        Assert.Equal(3, asset.FrameCount);
+        // Bounds should only encompass active frames (x=10..16, y=5..7), NOT dummy coords (1280, 960)
+        Assert.Equal(10, asset.Bounds.X);
+        Assert.Equal(5, asset.Bounds.Y);
+        Assert.Equal(6, asset.Bounds.Width);
+        Assert.Equal(2, asset.Bounds.Height);
+        Assert.Null(asset.Verify());
+
+        var f0 = asset.DecodeFrame(0);
+        Assert.False(f0.IsEmpty);
+        Assert.NotNull(f0.Image);
+        Assert.Equal(2, f0.Image.Width);
+        Assert.Equal(1, f0.Image.Height);
+
+        var f1 = asset.DecodeFrame(1);
+        Assert.True(f1.IsEmpty);
+        Assert.Null(f1.Image);
+
+        var f2 = asset.DecodeFrame(2);
+        Assert.False(f2.IsEmpty);
+        Assert.NotNull(f2.Image);
+        Assert.Equal(1, f2.Image.Width);
+        Assert.Equal(1, f2.Image.Height);
     }
 
     [Fact]
@@ -678,7 +775,7 @@ public class Runaway3Tests
         string resDir = Path.Combine(R3SteamDir, "Resource");
         if (!Directory.Exists(resDir)) return;
 
-        // 1. RESOURCE.002: cutscene archive containing 2 character sprite animations (e12, e13)
+        // 1. RESOURCE.002: cutscene archive containing 14 character sprite animations
         string r002Path = Path.Combine(resDir, "RESOURCE.002");
         if (File.Exists(r002Path))
         {
@@ -720,10 +817,10 @@ public class Runaway3Tests
                 byte[] apng = apngMs.ToArray();
                 Assert.NotEmpty(apng);
             }
-            Assert.Equal(2, spriteCount);
+            Assert.Equal(14, spriteCount);
         }
 
-        // 2. RESOURCE.D01: chapter 4 autopsy lab scene sprites (8 sprites out of 16 entries)
+        // 2. RESOURCE.D01: chapter 4 autopsy lab scene sprites (11 sprites out of 16 entries)
         string d01Path = Path.Combine(resDir, "RESOURCE.D01");
         if (File.Exists(d01Path))
         {
@@ -753,7 +850,54 @@ public class Runaway3Tests
                     Assert.True(lastFrame.Image != null || lastFrame.IsEmpty);
                 }
             }
-            Assert.Equal(8, spriteCount);
+            Assert.Equal(11, spriteCount);
+        }
+    }
+
+    [Fact]
+    public void RealInstall_Runaway3_ResourceB04_SpriteAnimations()
+    {
+        if (!Directory.Exists(R3SteamDir)) return;
+
+        string b04Path = Path.Combine(R3SteamDir, "Resource", "RESOURCE.B04");
+        if (!File.Exists(b04Path)) return;
+
+        using var f = File.OpenRead(b04Path);
+        var entries = SceneArchive.ReadEntries(f);
+
+        // e07: 169 frames animation with empty frames
+        var e7 = entries[7];
+        byte[] e7Bytes = new byte[e7.Size];
+        f.Position = e7.Offset;
+        f.ReadExactly(e7Bytes);
+
+        var asset7 = SpriteAsset.Parse(e7Bytes);
+        Assert.NotNull(asset7);
+        Assert.True(asset7.IsRunaway3);
+        Assert.Equal(169, asset7.FrameCount);
+        Assert.Equal((411, 513, 319, 332), asset7.Bounds);
+        Assert.Null(asset7.Verify());
+
+        var f0 = asset7.DecodeFrame(0);
+        Assert.False(f0.IsEmpty);
+        Assert.NotNull(f0.Image);
+        Assert.Equal(236, f0.Image.Width);
+        Assert.Equal(258, f0.Image.Height);
+
+        var f1 = asset7.DecodeFrame(1);
+        Assert.True(f1.IsEmpty);
+
+        // Verify other previously failed sprites in RESOURCE.B04 (e10, e11, e13, e14)
+        foreach (int idx in new[] { 10, 11, 13, 14 })
+        {
+            var e = entries[idx];
+            byte[] eb = new byte[e.Size];
+            f.Position = e.Offset;
+            f.ReadExactly(eb);
+            var a = SpriteAsset.Parse(eb);
+            Assert.NotNull(a);
+            Assert.True(a.IsRunaway3);
+            Assert.Null(a.Verify());
         }
     }
 
@@ -843,7 +987,7 @@ public class Runaway3InterfaceTests
         FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
             .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(46, global.Children.Count(c => c.Kind == EntryKind.Animation));
+        Assert.Equal(52, global.Children.Count(c => c.Kind == EntryKind.Animation));
         Assert.Equal(20, global.Children.Count(c => c.FriendlyName?.Contains("  bitmap ", StringComparison.Ordinal) == true));
 
         foreach (FsNode node in global.Children.Where(c => c.Kind == EntryKind.Animation))
