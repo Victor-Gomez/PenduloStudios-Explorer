@@ -57,12 +57,20 @@
             <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,4">
                 <Image Grid.Column="0" Source="avares://RunawayExplorer/Assets/RunawayExplorer.png" Width="96" Height="96"
                        VerticalAlignment="Top" Margin="0,0,14,0"/>
-                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" VerticalAlignment="Top">
                     <TextBlock Text="Runaway Explorer" FontSize="20" FontWeight="Bold"/>
                     <SelectableTextBlock x:Name="VersionText" Opacity="0.8" Margin="0,2,0,0"/>
                     <TextBlock Text="Created by Victor Gomez" FontWeight="Medium" Opacity="0.85" Margin="0,3,0,0"/>
-                    <TextBlock Text="An asset viewer for Runaway: A Road Adventure (Pendulo Studios, 2001)."
-                               Opacity="0.7" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    <TextBlock Text="An asset viewer for adventure games by Pendulo Studios:"
+                               Opacity="0.8" Margin="0,6,0,3"/>
+                    <StackPanel Spacing="2" Margin="0,0,0,0">
+                        <TextBlock Text="• Hollywood Monsters (1997)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Runaway: A Road Adventure (2001)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Runaway 2: The Dream of the Turtle (2006)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Runaway: A Twist of Fate (2009)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• The Next BIG Thing (2011)" Opacity="0.7" FontSize="11.5"/>
+                        <TextBlock Text="• Yesterday (2012)" Opacity="0.7" FontSize="11.5"/>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
 
@@ -83,7 +91,7 @@
             </Grid>
 
             <TextBlock TextWrapping="Wrap" Opacity="0.65" FontSize="11.5" Margin="0,16,0,0">
-                <Run FontStyle="Italic">Runaway: A Road Adventure</Run> is a trademark of its respective owners. This is an unaffiliated fan-made tool and ships no game data.
+                <Run FontStyle="Italic">Runaway</Run> and related titles are trademarks of their respective owners. This is an unaffiliated fan-made tool and ships no game data.
             </TextBlock>
 
             <StackPanel Orientation="Horizontal" Spacing="4" Margin="-8,10,0,0">
