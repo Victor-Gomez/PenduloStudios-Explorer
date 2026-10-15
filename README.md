@@ -2,6 +2,12 @@
 
 # Runaway Explorer
 
+[![CI](https://github.com/Victor-Gomez/Runaway-Explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/Victor-Gomez/Runaway-Explorer/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/Victor-Gomez/Runaway-Explorer?label=release)](https://github.com/Victor-Gomez/Runaway-Explorer/releases/latest)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg)](#download)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A cross-platform viewer for the game assets of the *Runaway* trilogy and the other adventure games by Pendulo Studios:
 - **Hollywood Monsters** (1997)
 - **Runaway: A Road Adventure** (2001)
@@ -58,6 +64,13 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
   managed in the Settings dialog and top toolbar selector.
 - **Update checks.** Optionally asks GitHub whether a newer release exists, then links you to it. Off
   until you say yes.
+
+## Download
+
+Pre-built, self-contained standalone binaries for **Windows (x64)** and **Linux (x64)** are available on the **[Releases](https://github.com/Victor-Gomez/Runaway-Explorer/releases/latest)** page. No .NET runtime installation is required to run them.
+
+1. Download and extract the archive for your operating system (`RunawayExplorer-v*-win-x64.zip` or `RunawayExplorer-v*-linux-x64.tar.gz`).
+2. Run `RunawayExplorer.exe` (Windows) or `./RunawayExplorer` (Linux).
 
 ## Building
 
@@ -121,3 +134,7 @@ the container.
 tool and ships no game data.
 
 The UI icons are from **[Lucide](https://lucide.dev)** (ISC licensed).
+ 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
