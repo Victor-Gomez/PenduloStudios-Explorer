@@ -34,5 +34,16 @@ public sealed record VideoResource(string TempFilePath, string? Subtitles = null
 /// </summary>
 public sealed record SceneResource(DecodedImage? Background, string Summary, FsNode Archive) : ResourceContent;
 
+/// <summary>
+/// A precomputed scene walk route mesh with its owning scene's background.
+/// </summary>
+public sealed record RouteResource(
+    RouteMatrix Matrix,
+    DecodedImage? Background,
+    string Summary,
+    FsNode Node,
+    DecodedImage? WalkMask = null) : ResourceContent;
+
 /// <summary>Loading the resource failed; <see cref="Message"/> is shown to the user in the text panel.</summary>
 public sealed record ErrorResource(string Message) : ResourceContent;
+

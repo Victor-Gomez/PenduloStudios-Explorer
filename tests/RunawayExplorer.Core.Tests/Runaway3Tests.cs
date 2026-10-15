@@ -1078,5 +1078,34 @@ public class Runaway3InterfaceTests
         Assert.Contains("CLAVO", mermaid);
         Assert.Contains("PUERTA DE HIERRO", mermaid);
     }
+
+    [Fact]
+    public void SceneCatalog_Runaway3_ResourceA01_DoesNotInheritRunaway1Names()
+    {
+        // When Runaway 3 RESOURCE.A01 is scanned, entry 0..7 must NOT be named with Runaway 1 titles
+        var node = new FsNode
+        {
+            Name = "e00",
+            ArchivePath = "RESOURCE.A01",
+            EntryIndex = 0,
+            Kind = EntryKind.Background,
+            Image = new ImageInfo { Width = 1650, Height = 720 },
+            GameVersion = GameVersion.Runaway3,
+        };
+        string label = SceneCatalog.FormatSceneEntryLabel(node, "en", GameVersion.Runaway3);
+        Assert.Equal("background 1650×720 (e00)", label);
+
+        var maskNode = new FsNode
+        {
+            Name = "e04",
+            ArchivePath = "RESOURCE.A01",
+            EntryIndex = 4,
+            Kind = EntryKind.Mask,
+            Image = new ImageInfo { Width = 1650, Height = 720 },
+            GameVersion = GameVersion.Runaway3,
+        };
+        string maskLabel = SceneCatalog.FormatSceneEntryLabel(maskNode, "en", GameVersion.Runaway3);
+        Assert.Equal("scene mask 1650×720 (e04)", maskLabel);
+    }
 }
 

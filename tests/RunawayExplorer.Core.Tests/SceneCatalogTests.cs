@@ -141,5 +141,41 @@ public class SceneCatalogTests
         Assert.Equal("keypad numeric button '0' 32×32 at 120,80 (e02)", formattedEn);
         Assert.Equal("botón numérico '0' del teclado 32×32 en 120,80 (e02)", formattedEs);
     }
+
+    [Fact]
+    public void KnownSceneAssetNames_AreScopedByGameVersion_AndDoNotPolluteOtherGames()
+    {
+        // Runaway 1 RESOURCE.A01 entry 0 has an investigated name
+        Assert.NotNull(SceneCatalog.GetKnownSceneAssetName(GameVersion.Runaway1, "RESOURCE.A01", 0, "en"));
+        Assert.Equal("CD-ROM tray drive animation", SceneCatalog.GetKnownSceneAssetName(GameVersion.Runaway1, "RESOURCE.A01", 0, "en"));
+
+        // Runaway 3 RESOURCE.A01 entry 0 must NOT inherit Runaway 1's name
+        Assert.Null(SceneCatalog.GetKnownSceneAssetName(GameVersion.Runaway3, "RESOURCE.A01", 0, "en"));
+
+        // FormatSceneEntryLabel for Runaway 3 RESOURCE.A01 entry 0 must format as normal background, not CD-ROM tray
+        var r3Node = new FsNode
+        {
+            Name = "e00",
+            ArchivePath = @"RESOURCE.A01",
+            EntryIndex = 0,
+            Kind = EntryKind.Background,
+            Image = new ImageInfo { Width = 1650, Height = 720 },
+            GameVersion = GameVersion.Runaway3,
+        };
+        string labelEn = SceneCatalog.FormatSceneEntryLabel(r3Node, "en");
+        Assert.Equal("background 1650×720 (e00)", labelEn);
+
+        // Runaway 3 mask e04 in RESOURCE.A01 must format as scene mask, not chapter select card
+        var r3Mask = new FsNode
+        {
+            Name = "e04",
+            ArchivePath = @"RESOURCE.A01",
+            EntryIndex = 4,
+            Kind = EntryKind.Mask,
+            Image = new ImageInfo { Width = 1650, Height = 720 },
+            GameVersion = GameVersion.Runaway3,
+        };
+        Assert.Equal("scene mask 1650×720 (e04)", SceneCatalog.FormatSceneEntryLabel(r3Mask, "en"));
+    }
 }
 

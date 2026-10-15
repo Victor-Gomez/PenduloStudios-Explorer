@@ -188,6 +188,9 @@ public sealed class FsNode
     /// </summary>
     public string? ArchivePath { get; set; }
 
+    /// <summary>Which game this node belongs to, if known.</summary>
+    public GameVersion? GameVersion { get; set; }
+
     public ImageInfo? Image { get; set; }
 
     public AudioInfo? Audio { get; set; }

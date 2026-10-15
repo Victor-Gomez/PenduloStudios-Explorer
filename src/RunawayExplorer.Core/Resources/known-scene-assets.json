@@ -1,0 +1,852 @@
+﻿{
+  "Runaway1": {
+    "RESOURCE.A00": {
+      "0": {
+        "en": "Brian driving car in desert highway",
+        "es": "Brian conduciendo por el desierto"
+      },
+      "1": {
+        "en": "Brian talking while driving car",
+        "es": "Brian hablando mientras conduce"
+      },
+      "2": {
+        "en": "car dashboard controls and radio",
+        "es": "mandos y radio del salpicadero del coche"
+      },
+      "3": {
+        "en": "car headlights illuminating dark highway",
+        "es": "faros del coche iluminando la carretera"
+      },
+      "4": {
+        "en": "car exterior side view in motion",
+        "es": "vista lateral del coche en marcha"
+      },
+      "5": {
+        "en": "desert highway perspective at night",
+        "es": "perspectiva de la carretera del desierto de noche"
+      },
+      "6": {
+        "en": "hospital room background",
+        "es": "fondo de la habitación del hospital"
+      },
+      "7": {
+        "en": "title card — Chapter 1: Wake Me Before Dying",
+        "es": "pantalla de título — Capítulo 1: Despiértame antes de morir"
+      },
+      "8": {
+        "en": "title card — Chapter 2: The Mysterious Crucifix",
+        "es": "pantalla de título — Capítulo 2: El extraño crucifijo"
+      },
+      "9": {
+        "en": "title card — Chapter 3: The Great Escape",
+        "es": "pantalla de título — Capítulo 3: La gran evasión"
+      },
+      "10": {
+        "en": "title card — Chapter 4: Close Encounters of the Fourth Kind",
+        "es": "pantalla de título — Capítulo 4: Encuentros en la cuarta fase"
+      },
+      "11": {
+        "en": "title card — Chapter 5: Gifts from the Crypt",
+        "es": "pantalla de título — Capítulo 5: La cripta sagrada"
+      },
+      "12": {
+        "en": "title card — Chapter 6: The Indian, the Nun and the Finger",
+        "es": "pantalla de título — Capítulo 6: El indio, la monja y el dedo"
+      }
+    },
+    "RESOURCE.B02": {
+      "0": {
+        "en": "hospital room background",
+        "es": "fondo de la habitación del hospital"
+      },
+      "1": {
+        "en": "hospital room mask",
+        "es": "máscara de la habitación del hospital"
+      },
+      "11": {
+        "en": "bathroom door overlay",
+        "es": "capa de la puerta del baño"
+      },
+      "12": {
+        "en": "door frame occluder overlay",
+        "es": "capa del marco de la puerta"
+      },
+      "14": {
+        "en": "Gina's bed frame occluder overlay",
+        "es": "capa de la cama de Gina"
+      },
+      "15": {
+        "en": "privacy curtain occluder overlay",
+        "es": "capa de la cortina separadora"
+      },
+      "17": {
+        "en": "Gina sleeping in hospital bed",
+        "es": "Gina durmiendo en la cama"
+      },
+      "20": {
+        "en": "smoke detector LED inactive (off)",
+        "es": "LED detector de humos apagado"
+      },
+      "21": {
+        "en": "smoke detector LED blinking (on)",
+        "es": "LED detector de humos parpadeando"
+      },
+      "22": {
+        "en": "window blinds morning light animation",
+        "es": "animación de la luz de la persiana"
+      }
+    },
+    "RESOURCE.A01": {
+      "0": {
+        "en": "CD-ROM tray drive animation",
+        "es": "animación de la bandeja de la unidad de CD-ROM"
+      },
+      "1": {
+        "en": "hospital room background preview",
+        "es": "vista previa de la habitación del hospital"
+      },
+      "2": {
+        "en": "chapter select card — Chapter 1: Wake Me Before Dying",
+        "es": "tarjeta selector — Capítulo 1: Despiértame antes de morir"
+      },
+      "3": {
+        "en": "chapter select card — Chapter 2: The Mysterious Crucifix",
+        "es": "tarjeta selector — Capítulo 2: El extraño crucifijo"
+      },
+      "4": {
+        "en": "chapter select card — Chapter 3: The Great Escape",
+        "es": "tarjeta selector — Capítulo 3: La gran evasión"
+      },
+      "5": {
+        "en": "chapter select card — Chapter 4: Close Encounters of the Fourth Kind",
+        "es": "tarjeta selector — Capítulo 4: Encuentros en la cuarta fase"
+      },
+      "6": {
+        "en": "chapter select card — Chapter 5: Gifts from the Crypt",
+        "es": "tarjeta selector — Capítulo 5: La cripta sagrada"
+      },
+      "7": {
+        "en": "chapter select card — Chapter 6: The Indian, the Nun and the Finger",
+        "es": "tarjeta selector — Capítulo 6: El indio, la monja y el dedo"
+      }
+    },
+    "RESOURCE.A02": {
+      "0": {
+        "en": "Pendulo Studios logo animation (running character)",
+        "es": "animación logotipo de Pendulo Studios (personaje corriendo)"
+      },
+      "1": {
+        "en": "FX Interactive metallic logo",
+        "es": "logotipo metálico de FX Interactive"
+      }
+    },
+    "RESOURCE.B01": {
+      "0": {
+        "en": "suburbs at night panoramic background (1592×600)",
+        "es": "fondo panorámico de los suburbios de noche (1592×600)"
+      },
+      "1": {
+        "en": "suburbs scene mask",
+        "es": "máscara de escena de los suburbios"
+      },
+      "2": {
+        "en": "car headlights beam overlay",
+        "es": "capa del haz de los faros del coche"
+      },
+      "3": {
+        "en": "Brian's convertible car parked at roadside",
+        "es": "descapotable de Brian aparcado en el arcén"
+      },
+      "4": {
+        "en": "streetlamp light cone overlay",
+        "es": "capa del cono de luz de la farola"
+      },
+      "5": {
+        "en": "suburban street sign overlay",
+        "es": "capa de la señal de la calle"
+      },
+      "6": {
+        "en": "night sky & silhouette trees overlay",
+        "es": "capa del cielo nocturno y siluetas de árboles"
+      },
+      "7": {
+        "en": "suburban house fence overlay",
+        "es": "capa de la valla de la casa"
+      },
+      "8": {
+        "en": "roadside ditch barrier overlay",
+        "es": "capa de la barrera de la cuneta"
+      },
+      "9": {
+        "en": "bonus concept art sketch 1 (Gina and thugs)",
+        "es": "boceto de arte conceptual 1 (Gina y matones)"
+      },
+      "10": {
+        "en": "bonus concept art sketch 2 (desert highway)",
+        "es": "boceto de arte conceptual 2 (carretera del desierto)"
+      },
+      "11": {
+        "en": "bonus concept art sketch 3 (Mamá Dorita)",
+        "es": "boceto de arte conceptual 3 (Mamá Dorita)"
+      },
+      "12": {
+        "en": "bonus concept art sketch 4 (Hopi ritual)",
+        "es": "boceto de arte conceptual 4 (ritual hopi)"
+      },
+      "13": {
+        "en": "bonus concept art sketch 5 (museum lobby)",
+        "es": "boceto de arte conceptual 5 (vestíbulo del museo)"
+      },
+      "14": {
+        "en": "bonus concept art sketch 6 (Douglasville main street)",
+        "es": "boceto de arte conceptual 6 (calle principal de Douglasville)"
+      },
+      "15": {
+        "en": "bonus concept art sketch 7 (Saturn and sculpture)",
+        "es": "boceto de arte conceptual 7 (Saturno y escultura)"
+      },
+      "16": {
+        "en": "bonus concept art sketch 8 (Rutger and weed)",
+        "es": "boceto de arte conceptual 8 (Rutger e invernadero)"
+      },
+      "17": {
+        "en": "bonus concept art sketch 9 (Sushi's workshop)",
+        "es": "boceto de arte conceptual 9 (taller de Sushi)"
+      },
+      "18": {
+        "en": "bonus concept art sketch 10 (thugs' cabin)",
+        "es": "boceto de arte conceptual 10 (cabaña de los matones)"
+      },
+      "19": {
+        "en": "bonus concept art sketch 11 (helicopter in hangar)",
+        "es": "boceto de arte conceptual 11 (helicóptero en hangar)"
+      },
+      "20": {
+        "en": "bonus concept art sketch 12 (desert graveyard)",
+        "es": "boceto de arte conceptual 12 (cementerio del desierto)"
+      },
+      "21": {
+        "en": "bonus concept art sketch 13 (hospital interior)",
+        "es": "boceto de arte conceptual 13 (interior del hospital)"
+      },
+      "22": {
+        "en": "bonus concept art sketch 14 (bank vault)",
+        "es": "boceto de arte conceptual 14 (cámara del banco)"
+      },
+      "23": {
+        "en": "bonus concept art sketch 15 (steam locomotive)",
+        "es": "boceto de arte conceptual 15 (locomotora de vapor)"
+      },
+      "24": {
+        "en": "bonus concept art sketch 16 (finale showdown)",
+        "es": "boceto de arte conceptual 16 (desenlace final)"
+      }
+    },
+    "RESOURCE.B06": {
+      "0": {
+        "en": "hospital storage room & medical archive background",
+        "es": "fondo del almacén del hospital y archivo médico"
+      },
+      "1": {
+        "en": "hospital storage room mask",
+        "es": "máscara del almacén del hospital"
+      },
+      "2": {
+        "en": "medical archive filing cabinet drawers overlay",
+        "es": "capa de los cajones del archivador médico"
+      },
+      "3": {
+        "en": "cardboard archive box on top shelf overlay",
+        "es": "capa de la caja de cartón del estante superior"
+      },
+      "4": {
+        "en": "hanging anatomy skeleton model overlay",
+        "es": "capa del modelo anatómico de esqueleto colgado"
+      },
+      "5": {
+        "en": "storage room fire extinguisher overlay",
+        "es": "capa del extintor de incendios"
+      },
+      "6": {
+        "en": "escape window to alleyway overlay",
+        "es": "capa de la ventana de escape al callejón"
+      },
+      "7": {
+        "en": "hospital linen and medicine shelf overlay",
+        "es": "capa de la estantería de sábanas y medicinas"
+      }
+    },
+    "RESOURCE.B08": {
+      "0": {
+        "en": "hospital bathroom background",
+        "es": "fondo del baño del hospital"
+      },
+      "1": {
+        "en": "hospital bathroom mask",
+        "es": "máscara del baño del hospital"
+      },
+      "2": {
+        "en": "bathroom washbasin and taps overlay",
+        "es": "capa del lavabo y grifos del baño"
+      },
+      "3": {
+        "en": "medicine cabinet mirror overlay",
+        "es": "capa del espejo del botiquín"
+      },
+      "4": {
+        "en": "medicine cabinet open door with bottles overlay",
+        "es": "capa de la puerta abierta del botiquín con frascos"
+      },
+      "5": {
+        "en": "bathroom frosted window overlay",
+        "es": "capa de la ventana esmerilada del baño"
+      },
+      "6": {
+        "en": "bathroom heating radiator overlay",
+        "es": "capa del radiador de calefacción del baño"
+      },
+      "7": {
+        "en": "bathroom toilet stall door overlay",
+        "es": "capa de la puerta de la cabina del inodoro"
+      }
+    },
+    "RESOURCE.D06": {
+      "0": {
+        "en": "museum main lobby panoramic background with dinosaur skeletons (1760×1200)",
+        "es": "fondo panorámico del vestíbulo del museo con esqueletos de dinosaurios (1760×1200)"
+      },
+      "1": {
+        "en": "museum main lobby mask",
+        "es": "máscara del vestíbulo del museo"
+      },
+      "2": {
+        "en": "T-Rex dinosaur skeleton skull & ribs overlay",
+        "es": "capa del cráneo y costillas del esqueleto de T-Rex"
+      },
+      "3": {
+        "en": "Triceratops skeleton display overlay",
+        "es": "capa de la exhibición del esqueleto de Triceratops"
+      },
+      "4": {
+        "en": "museum mezzanine stairs overlay",
+        "es": "capa de las escaleras al entresuelo del museo"
+      },
+      "5": {
+        "en": "glass showcase exhibit overlay",
+        "es": "capa de la vitrina de cristal de exhibición"
+      },
+      "6": {
+        "en": "museum visitor bench overlay",
+        "es": "capa del banco para visitantes del museo"
+      },
+      "7": {
+        "en": "security surveillance camera overlay",
+        "es": "capa de la cámara de seguridad de vigilancia"
+      }
+    },
+    "RESOURCE.D09": {
+      "0": {
+        "en": "Mayan exhibition hall background",
+        "es": "fondo de la sala de la exposición maya"
+      },
+      "1": {
+        "en": "Mayan exhibition hall mask",
+        "es": "máscara de la sala de la exposición maya"
+      },
+      "2": {
+        "en": "Mayan pyramid altar offering bowl overlay",
+        "es": "capa del cuenco de ofrendas del altar de la pirámide maya"
+      },
+      "3": {
+        "en": "Mayan carved stone stela overlay",
+        "es": "capa de la estela maya de piedra tallada"
+      },
+      "4": {
+        "en": "glass showcase with pre-Columbian gold relics overlay",
+        "es": "capa de la vitrina con reliquias de oro precolombinas"
+      },
+      "5": {
+        "en": "hall entrance archway overlay",
+        "es": "capa del arco de entrada a la sala"
+      },
+      "6": {
+        "en": "laser security barrier beams inactive (off)",
+        "es": "haces de barrera de seguridad láser inactivos (apagados)"
+      },
+      "7": {
+        "en": "laser security barrier beams active (red)",
+        "es": "haces de barrera de seguridad láser activos (rojos)"
+      }
+    },
+    "RESOURCE.D10": {
+      "0": {
+        "en": "thermal analysis lab background",
+        "es": "fondo del laboratorio de análisis térmico"
+      },
+      "1": {
+        "en": "thermal analysis lab mask",
+        "es": "máscara del laboratorio de análisis térmico"
+      },
+      "2": {
+        "en": "thermal imaging scanner chamber overlay",
+        "es": "capa de la cámara de escáner termográfico"
+      },
+      "3": {
+        "en": "computer monitor displaying Mayan mask thermograph overlay",
+        "es": "capa del monitor con termografía de la máscara maya"
+      },
+      "4": {
+        "en": "gas tank regulator valves overlay",
+        "es": "capa de las válvulas reguladoras del tanque de gas"
+      },
+      "5": {
+        "en": "Susan's workstation & laboratory stool overlay",
+        "es": "capa de la mesa de trabajo y taburete de Susan"
+      },
+      "6": {
+        "en": "fume hood and ventilation ducts overlay",
+        "es": "capa de la campana extractora y conductos"
+      },
+      "7": {
+        "en": "liquid nitrogen container cylinder overlay",
+        "es": "capa del cilindro de nitrógeno líquido"
+      }
+    },
+    "RESOURCE.D14": {
+      "0": {
+        "en": "ACME security keypad and scanner panel background",
+        "es": "fondo del panel de teclado y escáner de seguridad ACME"
+      },
+      "1": {
+        "en": "ACME security keypad mask",
+        "es": "máscara del teclado de seguridad ACME"
+      },
+      "2": {
+        "en": "keypad numeric button '0'",
+        "es": "botón numérico '0' del teclado"
+      },
+      "3": {
+        "en": "keypad numeric button '1'",
+        "es": "botón numérico '1' del teclado"
+      },
+      "4": {
+        "en": "keypad numeric button '2'",
+        "es": "botón numérico '2' del teclado"
+      },
+      "5": {
+        "en": "keypad numeric button '3'",
+        "es": "botón numérico '3' del teclado"
+      },
+      "6": {
+        "en": "keypad numeric button '4'",
+        "es": "botón numérico '4' del teclado"
+      },
+      "7": {
+        "en": "keypad numeric button '5'",
+        "es": "botón numérico '5' del teclado"
+      },
+      "8": {
+        "en": "keypad numeric button '6'",
+        "es": "botón numérico '6' del teclado"
+      },
+      "9": {
+        "en": "keypad numeric button '7'",
+        "es": "botón numérico '7' del teclado"
+      },
+      "10": {
+        "en": "keypad numeric button '8'",
+        "es": "botón numérico '8' del teclado"
+      },
+      "11": {
+        "en": "keypad numeric button '9'",
+        "es": "botón numérico '9' del teclado"
+      },
+      "12": {
+        "en": "keypad function button RESET / CLR",
+        "es": "botón de función RESET / CLR del teclado"
+      },
+      "13": {
+        "en": "keypad function button ENTER / OK",
+        "es": "botón de función ENTER / OK del teclado"
+      },
+      "14": {
+        "en": "biometric fingerprint glass scanner pad",
+        "es": "lector de cristal de huella dactilar biométrica"
+      },
+      "15": {
+        "en": "security status LCD display (Access Granted / Denied)",
+        "es": "pantalla LCD de estado de seguridad (Acceso concedido / denegado)"
+      }
+    },
+    "RESOURCE.E02": {
+      "0": {
+        "en": "thugs' desert cabin front exterior background",
+        "es": "fondo exterior de la cabaña de los matones en el desierto"
+      },
+      "1": {
+        "en": "cabin front exterior mask",
+        "es": "máscara exterior de la cabaña"
+      },
+      "2": {
+        "en": "wooden front porch steps overlay",
+        "es": "capa de los escalones del porche de madera"
+      },
+      "3": {
+        "en": "rusty pickup truck parked outside overlay",
+        "es": "capa de la camioneta oxidada aparcada fuera"
+      },
+      "4": {
+        "en": "cabin chimney smoke animation",
+        "es": "animación del humo de la chimenea de la cabaña"
+      },
+      "5": {
+        "en": "cabin wooden front door overlay",
+        "es": "capa de la puerta de madera de la cabaña"
+      }
+    },
+    "RESOURCE.E03": {
+      "0": {
+        "en": "thugs' cabin main living room background",
+        "es": "fondo del salón principal de la cabaña de los matones"
+      },
+      "1": {
+        "en": "cabin living room mask",
+        "es": "máscara del salón de la cabaña"
+      },
+      "2": {
+        "en": "wooden dining table and chairs overlay",
+        "es": "capa de la mesa de comedor de madera y sillas"
+      },
+      "3": {
+        "en": "refrigerator with food and beer overlay",
+        "es": "capa del frigorífico con comida y cerveza"
+      },
+      "4": {
+        "en": "closet door where Gina is tied up overlay",
+        "es": "capa de la puerta del armario donde Gina está atada"
+      },
+      "5": {
+        "en": "weapon rack with rifles overlay",
+        "es": "capa del armero con rifles"
+      },
+      "6": {
+        "en": "worn floor rug overlay",
+        "es": "capa de la alfombra desgastada del suelo"
+      }
+    },
+    "RESOURCE.E05": {
+      "0": {
+        "en": "aircraft graveyard background",
+        "es": "fondo del cementerio de aviones"
+      },
+      "1": {
+        "en": "aircraft graveyard mask",
+        "es": "máscara del cementerio de aviones"
+      },
+      "2": {
+        "en": "crashed fighter jet fuselage overlay",
+        "es": "capa del fuselaje del caza estrellado"
+      },
+      "3": {
+        "en": "airplane cockpit canopy windshield overlay",
+        "es": "capa de la carlinga de la cabina del avión"
+      },
+      "4": {
+        "en": "detached jet turbine engine on sand overlay",
+        "es": "capa de la turbina del motor reactor en la arena"
+      },
+      "5": {
+        "en": "scrap aircraft aluminum debris overlay",
+        "es": "capa de los restos de chatarra de avión"
+      }
+    },
+    "RESOURCE.E06": {
+      "0": {
+        "en": "desert camp and parked tour bus background",
+        "es": "fondo del campamento en el desierto y autobús de gira"
+      },
+      "1": {
+        "en": "tour bus exterior mask",
+        "es": "máscara del exterior del autobús"
+      },
+      "2": {
+        "en": "tour bus side entrance passenger door overlay",
+        "es": "capa de la puerta lateral de pasajeros del autobús"
+      },
+      "3": {
+        "en": "campfire pit and folding lawn chairs overlay",
+        "es": "capa de la hoguera de campamento y sillas plegables"
+      },
+      "4": {
+        "en": "diva vanity dressing mirror table on sand overlay",
+        "es": "capa del tocador con espejo de maquillaje en la arena"
+      },
+      "5": {
+        "en": "sun awning canopy attached to bus overlay",
+        "es": "capa del toldo parasol acoplado al autobús"
+      }
+    },
+    "RESOURCE.F09": {
+      "0": {
+        "en": "Mamá Dorita's house front porch background",
+        "es": "fondo del porche de la casa de Mamá Dorita"
+      },
+      "1": {
+        "en": "Mamá Dorita's porch mask",
+        "es": "máscara del porche de Mamá Dorita"
+      },
+      "2": {
+        "en": "wooden entrance door overlay",
+        "es": "capa de la puerta de madera de entrada"
+      },
+      "3": {
+        "en": "porch wooden rocking chair overlay",
+        "es": "capa de la mecedora de madera del porche"
+      }
+    },
+    "RESOURCE.F13": {
+      "0": {
+        "en": "Mamá Dorita's house & water well background",
+        "es": "fondo de la casa de Mamá Dorita y pozo de agua"
+      },
+      "1": {
+        "en": "Mamá Dorita's yard mask",
+        "es": "máscara del patio de Mamá Dorita"
+      },
+      "2": {
+        "en": "water well with bucket & shrunken head overlay",
+        "es": "capa del pozo de agua con cubo y cabeza reducida"
+      },
+      "3": {
+        "en": "wooden fence and shrubs overlay",
+        "es": "capa de la valla de madera y arbustos"
+      }
+    },
+    "RESOURCE.F18": {
+      "0": {
+        "en": "Douglasville main street panoramic background",
+        "es": "fondo panorámico de la calle principal de Douglasville"
+      },
+      "1": {
+        "en": "main street mask",
+        "es": "máscara de la calle principal"
+      },
+      "2": {
+        "en": "saloon porch & swinging batwing doors overlay",
+        "es": "capa del porche del saloon y puertas batientes"
+      },
+      "3": {
+        "en": "sheriff office wooden sign overlay",
+        "es": "capa del cartel de madera de la oficina del sheriff"
+      },
+      "4": {
+        "en": "hotel entrance wooden facade overlay",
+        "es": "capa de la fachada de madera de entrada al hotel"
+      },
+      "5": {
+        "en": "water trough and horse hitching post overlay",
+        "es": "capa del abrevadero y poste para atar caballos"
+      }
+    },
+    "RESOURCE.F19": {
+      "0": {
+        "en": "ruined bank interior background",
+        "es": "fondo del interior del banco en ruinas"
+      },
+      "1": {
+        "en": "ruined bank mask",
+        "es": "máscara del banco en ruinas"
+      },
+      "2": {
+        "en": "heavy steel vault door overlay",
+        "es": "capa de la pesada puerta de acero de la cámara"
+      },
+      "3": {
+        "en": "collapsed wooden teller counter overlay",
+        "es": "capa del mostrador de madera derrumbado"
+      },
+      "4": {
+        "en": "iron teller window security grille overlay",
+        "es": "capa de la reja de hierro de la ventanilla"
+      },
+      "5": {
+        "en": "rubble and broken roof rafters overlay",
+        "es": "capa de los escombros y vigas rotas del tejado"
+      }
+    },
+    "RESOURCE.F20": {
+      "0": {
+        "en": "sheriff's office and jail cells background",
+        "es": "fondo de la oficina del sheriff y celdas"
+      },
+      "1": {
+        "en": "sheriff's office mask",
+        "es": "máscara de la oficina del sheriff"
+      },
+      "2": {
+        "en": "sheriff's desk with wanted posters overlay",
+        "es": "capa del escritorio del sheriff con carteles de búsqueda"
+      },
+      "3": {
+        "en": "jail cell iron bars and sliding door overlay",
+        "es": "capa de los barrotes de hierro y puerta corredera de la celda"
+      },
+      "4": {
+        "en": "cot bed with deceased prisoner skeleton overlay",
+        "es": "capa del catre con el esqueleto del preso"
+      },
+      "5": {
+        "en": "wall gun rack with Winchester rifles overlay",
+        "es": "capa del armero de pared con rifles Winchester"
+      }
+    },
+    "RESOURCE.F26": {
+      "0": {
+        "en": "derailed steam locomotive General background",
+        "es": "fondo de la locomotora de vapor General descarrilada"
+      },
+      "1": {
+        "en": "locomotive scene mask",
+        "es": "máscara de la locomotora"
+      },
+      "2": {
+        "en": "locomotive boiler cabin cab door overlay",
+        "es": "capa de la puerta de la cabina de la caldera de la locomotora"
+      },
+      "3": {
+        "en": "locomotive cowcatcher pilot and driving wheels overlay",
+        "es": "capa del quitapiedras y ruedas motrices de la locomotora"
+      },
+      "4": {
+        "en": "tender car filled with coal overlay",
+        "es": "capa del vagón ténder lleno de carbón"
+      },
+      "5": {
+        "en": "locomotive steam whistle and pressure valve animation",
+        "es": "animación del silbato de vapor y válvula de presión"
+      }
+    },
+    "RESOURCE.F29": {
+      "0": {
+        "en": "Joshua's crater camp & musical synthesizer background",
+        "es": "fondo del campamento en el cráter y sintetizador de Joshua"
+      },
+      "1": {
+        "en": "Joshua's crater camp mask",
+        "es": "máscara del campamento de Joshua"
+      },
+      "2": {
+        "en": "extraterrestrial communication synthesizer keyboard overlay",
+        "es": "capa del teclado del sintetizador para comunicación extraterrestre"
+      },
+      "3": {
+        "en": "synthesizer color keys / sound pipes animation",
+        "es": "animación de los tubos y teclas de colores del sintetizador"
+      },
+      "4": {
+        "en": "Joshua's motorcycle helmet with telepathic antennas overlay",
+        "es": "capa del casco de moto con antenas telepáticas de Joshua"
+      },
+      "5": {
+        "en": "camping tent and survival gear overlay",
+        "es": "capa de la tienda de campaña y equipo de supervivencia"
+      }
+    },
+    "RESOURCE.F30": {
+      "0": {
+        "en": "Saturn's sculptor workshop background",
+        "es": "fondo del taller de escultura de Saturno"
+      },
+      "1": {
+        "en": "Saturn's workshop mask",
+        "es": "máscara del taller de Saturno"
+      },
+      "2": {
+        "en": "kinetic metal sculpture in progress overlay",
+        "es": "capa de la escultura cinética de metal en curso"
+      },
+      "3": {
+        "en": "sculptor workbench with blowtorch & welder overlay",
+        "es": "capa del banco de trabajo con soplete y soldador"
+      },
+      "4": {
+        "en": "balcony railing overlooking desert street overlay",
+        "es": "capa de la barandilla del balcón hacia la calle del desierto"
+      },
+      "5": {
+        "en": "paint cans and resin trays overlay",
+        "es": "capa de los botes de pintura y bandejas de resina"
+      }
+    },
+    "RESOURCE.F39": {
+      "0": {
+        "en": "bank vault combination lock dial background",
+        "es": "fondo del dial de la cerradura de combinación de la caja fuerte"
+      },
+      "1": {
+        "en": "combination dial mask",
+        "es": "máscara del dial de combinación"
+      },
+      "2": {
+        "en": "rotating circular combination dial (0-99)",
+        "es": "dial circular giratorio de combinación (0-99)"
+      },
+      "3": {
+        "en": "vault lock handle locking bolt mechanism overlay",
+        "es": "capa del mecanismo de cerrojos y manivela de la caja fuerte"
+      }
+    },
+    "RESOURCE.H38": {
+      "0": {
+        "en": "Sushi's hacker computer loft background",
+        "es": "fondo del loft informático y taller de Sushi"
+      },
+      "1": {
+        "en": "Sushi's loft mask",
+        "es": "máscara del loft de Sushi"
+      },
+      "2": {
+        "en": "multi-monitor workstation desk overlay",
+        "es": "capa de la mesa de trabajo con múltiples monitores"
+      },
+      "3": {
+        "en": "computer screens glowing telemetry animation",
+        "es": "animación de los monitores con telemetría brillante"
+      },
+      "4": {
+        "en": "satellite receiver decoder dish overlay",
+        "es": "capa de la antena decodificadora por satélite"
+      },
+      "5": {
+        "en": "leather sofa and electronics workbench overlay",
+        "es": "capa del sofá de cuero y banco de componentes electrónicos"
+      }
+    },
+    "RESOURCE.H40": {
+      "0": {
+        "en": "Colonel Kordsmeier's command tent interior background",
+        "es": "fondo del interior de la tienda de mando del coronel Kordsmeier"
+      },
+      "1": {
+        "en": "command tent mask",
+        "es": "máscara de la tienda de mando"
+      },
+      "2": {
+        "en": "military surveillance terminal screen overlay",
+        "es": "capa de la pantalla del terminal de vigilancia militar"
+      },
+      "3": {
+        "en": "tactical operations planning map table overlay",
+        "es": "capa de la mesa con mapa de operaciones tácticas"
+      },
+      "4": {
+        "en": "radio communications transceiver rack overlay",
+        "es": "capa del equipo de radiocomunicaciones"
+      },
+      "5": {
+        "en": "tent entrance flap canvas overlay",
+        "es": "capa de la lona de entrada a la tienda"
+      }
+    }
+  }
+}

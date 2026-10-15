@@ -237,6 +237,26 @@
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
+                            <StackPanel x:Name="RouteOverlayGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" IsVisible="False">
+                                <Image Source="{StaticResource WireframeActionIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{DynamicResource Label_Routes}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
+                                <Border Classes="segmented" VerticalAlignment="Center" ToolTip.Tip="Route mesh display mode">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="RouteModeAdjacentRadio" Classes="segment" GroupName="RouteModeGroup"
+                                                     Content="{DynamicResource Option_RoutesAdjacent}" Click="RouteModeRadio_Click" Tag="adjacent" IsChecked="True"/>
+                                        <RadioButton x:Name="RouteModeAllRadio" Classes="segment" GroupName="RouteModeGroup"
+                                                     Content="{DynamicResource Option_RoutesAll}" Click="RouteModeRadio_Click" Tag="all"/>
+                                        <RadioButton x:Name="RouteModeSingleRadio" Classes="segment" GroupName="RouteModeGroup"
+                                                     Content="{DynamicResource Option_RoutesSingle}" Click="RouteModeRadio_Click" Tag="single"/>
+                                    </StackPanel>
+                                </Border>
+                                <ComboBox x:Name="RoutePickerCombo" Margin="6,0,0,0" Width="140" VerticalAlignment="Center"
+                                          SelectionChanged="RoutePickerCombo_SelectionChanged" IsVisible="False"/>
+                                <ToggleButton x:Name="RouteWalkMaskToggle" Classes="segment" Margin="6,0,0,0"
+                                              Content="{DynamicResource Option_RoutesWalkMask}" Click="RouteWalkMaskToggle_Click" ToolTip.Tip="Toggle walkable scene mask overlay"/>
+                                <ToggleButton x:Name="RouteInfoTextToggle" Classes="segment" Margin="6,0,0,0"
+                                              Content="{DynamicResource Option_RoutesRaw}" Click="RouteInfoTextToggle_Click" ToolTip.Tip="Toggle raw text and hex dump"/>
+                            </StackPanel>
                             <StackPanel x:Name="ImageBackgroundGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" IsVisible="False">
                                 <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="{DynamicResource Label_Background}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
@@ -328,6 +348,7 @@
                                     <Canvas x:Name="SceneOverlayLayer" Canvas.Left="0" Canvas.Top="0" ZIndex="2"/>
                                     <Image x:Name="SceneMaskImage" Canvas.Left="0" Canvas.Top="0" ZIndex="3" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None" Opacity="0.55" IsVisible="False"/>
+                                    <Canvas x:Name="RouteGraphCanvas" Canvas.Left="0" Canvas.Top="0" ZIndex="4" ClipToBounds="True" IsVisible="False"/>
                                 </Canvas>
                             </LayoutTransformControl>
                         </Grid>

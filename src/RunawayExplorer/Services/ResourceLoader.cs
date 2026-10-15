@@ -463,6 +463,38 @@ public static class ResourceLoader
                 case EntryKind.RawFile:
                 default:
                 {
+                    if (node.Kind == EntryKind.Data && (node.Size == RouteDecoder.TotalSizeR1 || node.Size == RouteDecoder.TotalSizeR2))
+                    {
+                        byte[] routeData = vfs.ReadBytes(node);
+                        if (RouteDecoder.IsRouteTable(routeData))
+                        {
+                            var matrix = RouteDecoder.Parse(routeData);
+                            DecodedImage? bg = null;
+                            try { bg = vfs.SceneBackgroundFor(node); } catch { }
+
+                            DecodedImage? walkMask = null;
+                            FsNode? archive = node.Parent;
+                            if (archive is not null && bg is not null)
+                            {
+                                FsNode? maskChild = archive.Children.FirstOrDefault(c => c.Kind == EntryKind.Mask);
+                                FsNode? attrChild = archive.Children.FirstOrDefault(c => c.Kind == EntryKind.Data && c.Size == 1536);
+                                if (maskChild is not null)
+                                {
+                                    try
+                                    {
+                                        byte[] maskBytes = vfs.ReadBytes(maskChild);
+                                        byte[]? attrBytes = attrChild is not null ? vfs.ReadBytes(attrChild) : null;
+                                        byte[]? idMap = attrBytes is not null ? RleMaskDecoder.ExtractObjectMapping(attrBytes) : null;
+                                        walkMask = RleMaskDecoder.Decode(maskBytes, bg.Width, bg.Height, idMap, attrBytes, MaskLayers.Walk, transparentBackground: true);
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            return new RouteResource(matrix, bg, RouteDecoder.FormatSummary(matrix), node, walkMask);
+                        }
+                    }
+
                     using Stream s = vfs.OpenFile(node);
                     int take = (int)Math.Min(s.Length, RawFormat.MaxDumpBytes);
                     var head = new byte[take];

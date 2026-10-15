@@ -81,6 +81,12 @@
     <x:String x:Key="Option_MaskMaterial">sonido</x:String>
     <x:String x:Key="Option_MaskOccluder">oclusiones</x:String>
     <x:String x:Key="ToolTip_MaskLayers">Filtrar capas de máscara: caminar, objetos interactivos, profundidad, sonido de pasos, oclusiones (Clic derecho para aislar)</x:String>
+    <x:String x:Key="Label_Routes">rutas</x:String>
+    <x:String x:Key="Option_RoutesAdjacent">adyacentes</x:String>
+    <x:String x:Key="Option_RoutesAll">todas</x:String>
+    <x:String x:Key="Option_RoutesSingle">individual</x:String>
+    <x:String x:Key="Option_RoutesWalkMask">máscara</x:String>
+    <x:String x:Key="Option_RoutesRaw">texto / hex</x:String>
     <x:String x:Key="Toolbar_Export">Exportar decodificado</x:String>
     <x:String x:Key="Toolbar_ExportRaw">Exportar en bruto</x:String>
 

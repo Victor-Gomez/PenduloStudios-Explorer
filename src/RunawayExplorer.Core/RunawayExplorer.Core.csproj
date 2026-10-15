@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\shipped-scan-cache.json" />
+    <EmbeddedResource Include="Resources\known-global-assets.json" />
+    <EmbeddedResource Include="Resources\known-scene-assets.json" />
   </ItemGroup>
 
   <ItemGroup>

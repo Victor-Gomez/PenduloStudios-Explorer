@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     private FsNode? _selectedNode;
     private bool _initializingGameSelector;
     private ResourceContent? _currentContent;
+    private RouteResource? _currentRoute;
 
     private WriteableBitmap? _animOnionCanvas;
     private double _animSpeedMultiplier = 1.0;
@@ -876,6 +877,10 @@ public partial class MainWindow : Window
                 await ExportTextAsync(text.Text, node.Kind == EntryKind.Viseme ? stem + ".txt" : stem + ".txt");
                 break;
 
+            case RouteResource route:
+                await ExportTextAsync(route.Summary, stem + "_routes.txt");
+                break;
+
             case SoundResource sound:
             {
                 string ext = Path.GetExtension(sound.TempFilePath);
@@ -1386,6 +1391,10 @@ public partial class MainWindow : Window
         {
             image = scene.Background;
         }
+        else if (_currentContent is RouteResource route)
+        {
+            image = route.Background;
+        }
 
         if (image is null)
             return;
@@ -1403,7 +1412,10 @@ public partial class MainWindow : Window
 
     private async void PreviewCopyAllText_Click(object? sender, RoutedEventArgs e)
     {
-        await Dialogs.SetClipboardTextAsync(this, TextPanel.Text ?? "");
+        string text = _currentContent is RouteResource route && string.IsNullOrEmpty(TextPanel.Text)
+            ? route.Summary
+            : (TextPanel.Text ?? "");
+        await Dialogs.SetClipboardTextAsync(this, text);
         SetStatus("Copied all text.");
     }
 
@@ -1858,6 +1870,7 @@ public partial class MainWindow : Window
             },
             VideoResource => "Bink video, header restored",
             TextResource t => $"{t.Text.Length:N0} chars",
+            RouteResource r => $"walk route mesh, {r.Matrix.TotalActiveRoutes} active routes across {r.Matrix.ZoneCount} zones",
             ErrorResource => "load failed",
             _ => "",
         };
@@ -1904,6 +1917,11 @@ public partial class MainWindow : Window
         SceneMaskImage.Source = null;
         SceneMaskImage.IsVisible = false;
         ImageMaskTypeGroup.IsVisible = false;
+
+        RouteGraphCanvas.Children.Clear();
+        RouteGraphCanvas.IsVisible = false;
+        RouteOverlayGroup.IsVisible = false;
+        _currentRoute = null;
     }
 
     private void ShowContent(ResourceContent content)
@@ -1914,6 +1932,10 @@ public partial class MainWindow : Window
         {
             case ImageResource image:
                 ShowImage(image);
+                break;
+
+            case RouteResource route:
+                ShowRoute(route);
                 break;
 
             case SceneResource scene:
@@ -2264,6 +2286,169 @@ public partial class MainWindow : Window
                     dst[dstIdx + 3] = a;
                 }
             }
+        }
+    }
+
+    private sealed class RoutePickerItem(Route route, string label)
+    {
+        public Route Route { get; } = route;
+        public string Label { get; } = label;
+        public override string ToString() => Label;
+    }
+
+    private void ShowRoute(RouteResource route)
+    {
+        _currentRoute = route;
+        RouteOverlayGroup.IsVisible = true;
+        RouteInfoTextToggle.IsChecked = false;
+        TextContainer.IsVisible = false;
+        TextPanel.IsVisible = false;
+
+        var comboItems = new List<RoutePickerItem>();
+        foreach (Route r in route.Matrix.Routes.Where(r => r.IsActive))
+        {
+            string label = $"Z{r.FromZone} \u2192 Z{r.ToZone} ({r.Waypoints.Count} pt{(r.Waypoints.Count == 1 ? "" : "s")})";
+            comboItems.Add(new RoutePickerItem(r, label));
+        }
+        RoutePickerCombo.ItemsSource = comboItems;
+        if (comboItems.Count > 0)
+            RoutePickerCombo.SelectedIndex = 0;
+
+        RouteModeAdjacentRadio.IsChecked = true;
+        RoutePickerCombo.IsVisible = false;
+
+        int sceneW = route.Background?.Width ?? 1024;
+        int sceneH = route.Background?.Height ?? (route.Matrix.ZoneCount == RouteDecoder.ZoneCountR2 ? 768 : 600);
+
+        if (route.Background is not null)
+        {
+            ImageBackground.Source = BitmapConverter.ToBitmap(route.Background);
+            ImageBackground.IsVisible = true;
+            ImageStage.Background = Brushes.Black;
+        }
+        else
+        {
+            ImageBackground.Source = null;
+            ImageBackground.IsVisible = false;
+            ImageStage.Background = Checkerboard;
+        }
+
+        ImageStage.Width = sceneW;
+        ImageStage.Height = sceneH;
+
+        SceneOverlayLayer.Children.Clear();
+        SceneOverlayLayer.Width = sceneW;
+        SceneOverlayLayer.Height = sceneH;
+
+        if (route.WalkMask is not null)
+        {
+            SceneMaskImage.Source = BitmapConverter.ToBitmap(route.WalkMask);
+            SceneMaskImage.Width = sceneW;
+            SceneMaskImage.Height = sceneH;
+            SceneMaskImage.IsVisible = true;
+            RouteWalkMaskToggle.IsVisible = true;
+            RouteWalkMaskToggle.IsChecked = true;
+        }
+        else
+        {
+            SceneMaskImage.Source = null;
+            SceneMaskImage.IsVisible = false;
+            RouteWalkMaskToggle.IsVisible = false;
+            RouteWalkMaskToggle.IsChecked = false;
+        }
+
+        PreviewImage.Source = null;
+        PreviewImage.IsVisible = false;
+
+        RouteGraphCanvas.Width = sceneW;
+        RouteGraphCanvas.Height = sceneH;
+        RouteGraphCanvas.IsVisible = true;
+
+        UpdateRouteModeView();
+
+        ImageInfoText.Text = $"Walk route mesh: {route.Matrix.TotalActiveRoutes} active routes across {route.Matrix.ZoneCount} zones ({route.Matrix.TotalWaypoints} waypoints).";
+
+        ImagePanel.IsVisible = true;
+        _imageZoom.Fit();
+    }
+
+    private void UpdateRouteModeView()
+    {
+        if (_currentRoute is null) return;
+        RouteDisplayMode mode = RouteDisplayMode.Adjacent;
+        if (RouteModeAllRadio.IsChecked == true) mode = RouteDisplayMode.All;
+        else if (RouteModeSingleRadio.IsChecked == true) mode = RouteDisplayMode.Single;
+
+        RoutePickerCombo.IsVisible = mode == RouteDisplayMode.Single;
+
+        Route? selectedRoute = (RoutePickerCombo.SelectedItem as RoutePickerItem)?.Route;
+        RouteGraphRenderer.Render(
+            RouteGraphCanvas,
+            _currentRoute.Matrix,
+            mode,
+            selectedRoute,
+            OnCanvasRouteClicked);
+    }
+
+    private void OnCanvasRouteClicked(Route route)
+    {
+        if (_currentRoute is null) return;
+        if (RoutePickerCombo.ItemsSource is IEnumerable<RoutePickerItem> items)
+        {
+            int idx = 0;
+            foreach (var item in items)
+            {
+                if (item.Route.FromZone == route.FromZone && item.Route.ToZone == route.ToZone)
+                {
+                    RoutePickerCombo.SelectedIndex = idx;
+                    break;
+                }
+                idx++;
+            }
+        }
+        RouteModeSingleRadio.IsChecked = true;
+        RoutePickerCombo.IsVisible = true;
+        UpdateRouteModeView();
+    }
+
+    private void RouteModeRadio_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_currentRoute is null) return;
+        UpdateRouteModeView();
+    }
+
+    private void RoutePickerCombo_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_currentRoute is null) return;
+        UpdateRouteModeView();
+    }
+
+    private void RouteWalkMaskToggle_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_currentRoute?.WalkMask is not null)
+        {
+            SceneMaskImage.IsVisible = RouteWalkMaskToggle.IsChecked == true;
+        }
+    }
+
+    private void RouteInfoTextToggle_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_currentRoute is null) return;
+        bool showText = RouteInfoTextToggle.IsChecked == true;
+        if (showText)
+        {
+            byte[] bytes = _vfs?.ReadBytes(_currentRoute.Node) ?? [];
+            string hex = RawFormat.ToHexDump(bytes.AsSpan(0, Math.Min(bytes.Length, 1024)));
+            TextPanel.Text = $"{_currentRoute.Summary}\n\nRaw hex dump:\n{hex}";
+            TextContainer.IsVisible = true;
+            TextPanel.IsVisible = true;
+            ImagePanel.IsVisible = false;
+        }
+        else
+        {
+            TextContainer.IsVisible = false;
+            TextPanel.IsVisible = false;
+            ImagePanel.IsVisible = true;
         }
     }
 

@@ -81,6 +81,12 @@
     <x:String x:Key="Option_MaskMaterial">sound</x:String>
     <x:String x:Key="Option_MaskOccluder">occluders</x:String>
     <x:String x:Key="ToolTip_MaskLayers">Filter mask layers: walkboxes, hotspots, depth bands, footstep sounds, occluders (Right-click to solo)</x:String>
+    <x:String x:Key="Label_Routes">routes</x:String>
+    <x:String x:Key="Option_RoutesAdjacent">adjacent</x:String>
+    <x:String x:Key="Option_RoutesAll">all</x:String>
+    <x:String x:Key="Option_RoutesSingle">single</x:String>
+    <x:String x:Key="Option_RoutesWalkMask">walk mask</x:String>
+    <x:String x:Key="Option_RoutesRaw">raw / hex</x:String>
     <x:String x:Key="Toolbar_Export">Export decoded</x:String>
     <x:String x:Key="Toolbar_ExportRaw">Export raw</x:String>
 

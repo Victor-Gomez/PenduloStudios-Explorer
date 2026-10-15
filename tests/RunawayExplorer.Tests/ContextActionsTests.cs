@@ -144,6 +144,19 @@ public class PreviewContextActionsTests
     }
 
     [Fact]
+    public void Routes_ZoomAndExportAndCopy()
+    {
+        var matrix = new RouteMatrix(2, [new Route(0, 1, [new Waypoint(10, 20)], [1])]);
+        var a = PreviewContextActions.For(new RouteResource(matrix, DecodedImage.Transparent(100, 100), "summary", Entry), Entry);
+        Assert.True(a.Zoom);
+        Assert.True(a.CopyImage);
+        Assert.True(a.CopyText);
+        Assert.True(a.Export);
+        Assert.True(a.ExportRaw);
+        Assert.False(a.OpenExternally);
+    }
+
+    [Fact]
     public void Video_OpensExternally()
     {
         var a = PreviewContextActions.For(new VideoResource("x.bik"), Entry);

@@ -133,6 +133,48 @@ scales by 4 and indexes the archive's offset table at `0x85643c`, which is the t
 plus `0x1c` — entry 7. So `RESOURCE.A00` entries 7 to 12 are the six chapter titles, selected by the
 scene's own argument. The archive is loaded once and reused between chapters.
 
+### The opening, `0x43dff0` (exe scene 2010)
+
+The game's first scene calls the loader as `0x43da20(0)` (no title card) and runs Brian's story.
+Traced on the original with `engines/pendulo/tools/trace_original.py` (ScummVM tree); times in ms
+from the start of `0x43dff0`:
+
+| ms | what |
+|---|---|
+| 0 | segment 0's first frame, `fadeIn(50)` (0.5 s) |
+| 572 / 1854 | segment 0 (positions 0..20), then cue 0 (stage 100 row 0, texts 500-502) |
+| 7287 / 8274 | segment 7 (190..206), cue 1 |
+| 18554 / 19615 | segment 8 (210..227), cue 2 (6 lines) |
+| 51895 / 53875 | segment 5 (150..182), cue 3 |
+| 67153 | `DATAVA02.001` frames 0..700 at 24 fps, at scene (256, 148), 400x234 |
+| 96342 | video closed, `0x43df60` clears its rect (black in the picture) |
+| 96374 / 98395 | segment 6 (182 down to 149), cue 9 (5 lines) |
+| 135586 | `fadeOut(50)`, `0x404e90` |
+| 136210 | return, `0x444b00(1)` (M01, S01, DATAACA1), then B01 |
+
+- **Segments.** `0x43d450(n)` sets the sequence position `b[0x5d2eea]` to the segment's start;
+  `0x43d560(n)` steps it once per 60 ms flag `0xa6708e`, takes the frame from the 228-byte table at
+  `0x5a4730` into `b[0x5d2ef1]`, and at the end stores the talk entry in `b[0x5d2ef8]`. Starts and
+  ends: 0: 0-20 -> 1, 1: 30-59 -> 2, 2: 59-84 -> 1, 3: 90-124 -> 3, 4: 129-146 -> 1, 5: 150-182 -> 4,
+  6: 182 down to 149 -> 1, 7: 190-206 -> 5, 8: 210-227 -> 1. `0x43cd80` draws the body (entry 0).
+- **Lip-sync.** While a talk entry is set, `0x43d110` draws it over the held body at frame
+  `0x5a46fc[viseme]` (the table is 0..5 twice), the viseme from `0x416de0`; 0 between lines.
+- **Lines.** A cue's lines follow 150 ms after each line ends (`0x4140f0(2, 0, 0, ...)`), and the
+  next segment starts ~25 ms after the last. A line ends on the talk step's clock, not the audio's
+  (read 2026-10-14): the sound thread `0x40abe0` wakes on each DirectSound notification and
+  `0x40a440` moves every channel's position (`+0x679e68`) on by one chunk (`0x74d380[ch]`: 3,000
+  bytes for the 16 kHz 8-bit voice, `0x4084bf`; 6,000 and 12,000 for the 16-bit formats; 187.5 ms
+  each) and clears the channel's flag (`+0x679e7c`, voice `0x679f74`) once it passes the length
+  (`+0x679e64`). The talk step `0x43d110` runs when the 50 ms pace flag `0x890680` is 2; finding the
+  flag clear it calls `0x412b20(1)`, and if `0x5fdb4b` (more lines) is set it counts `0x5c12e0` up
+  over three more ticks and then calls `0x4140f0(2, 0, 0, 11)`. Measured on cues 0-3 (13 lines):
+  the line ends `ceil50(ceil(bytes / 3000) * 187.5) + 50` ms after its text, 12 of 13
+  within 4 ms (the 13th, clip 477, 27 ms early).
+- **The video.** At `0x43a4b0` the exe loads `RESOURCE.002`'s table into the music bank
+  (`0x6d9060`), then `playSound(0, 0, 0, 4, 100, 0)`: entry 4, 16 kHz stereo, 29.98 s, once. Cues
+  4..8 (texts 514-518) are said as the frame (`0x8bc170`) passes 72, 214, 356, 498 and 641.
+- **Skip.** Escape sets `0x9d2735`, which the loops test to end the intro.
+
 **Frame counts are hardcoded.** Six calls to the sprite converter each take a byte from a table at
 `0x5a46cc`:
 
@@ -142,6 +184,53 @@ b2 23 07 23 23 23   =   178, 35, 7, 35, 35, 35
 
 Those are exactly the frame counts of `RESOURCE.A00` entries 0–5 as decoded from the archive. The
 executable stores them as a literal table rather than reading them from the file.
+
+### What follows the opening: B01, `0x44dce0`
+
+Scene 2010's dispatcher case calls `0x43dff0`, then `0x444b00(1)` and `0x40f110` (chapter 1), then
+`0x44dce0`, before its `jmp`; `interactions.py` dumps such followers as `then_<va>` (the JSON's
+`thenFunctions`). `0x44dce0` loads `RESOURCE.B01` (`0x44d0e0`) and ends by storing scene `0x7d0`
+(2000, the chapter title). Traced (ms from B01's start, the original against the engine's
+`SceneB01`):
+
+| s | what |
+|---|---|
+| 0 | `0x401ce0`, `playSound(1, 0, 2, 32, 80, 1)` (M01 #32, channel 2, looped), `fadeIn(50)` |
+| 0.5 | caption (entry 7) blended in by `0x44d3a0`, 5% a 60 ms tick, counter to 300, out again |
+| 5.4 | pan 568 -> 328, a pixel a step of the 10 ms flag `0x6d93cc` |
+| 10.05 | credits A (`0x44d880`): view 0, `0x404e90`, the composite cleared, so entries 5 and 8 are centred on black |
+| 19.65 | `0x43f680`: `DATAVB04.001` frames 0..250 (the suitcase), S01 #27 on channel 5 |
+| 30.57 | wait for channel 5 (`0x679fb2`, at most 8 counter steps), S01 #28 on channel 6, credits B (`0x44da30`, entries 9 and 6) |
+| 36.98 | entry 6 full: `playSound(0, 0, 0, 17, 100, 0)` (M01 #17, the music, once), `0x408fe0(2, 40)` |
+| 38.47 | 150 steps on: S01 #29 on channel 5, both run back |
+| 40.1 | wait for channel 6 (`0x679ff0`, at most 16), `DATAVB04.001` frames 261..312, black, `0x408fe0(5, 70)`, stop 5 and 6 |
+| 42.29 | the picture back, view 328, car (entry 1) from frame 48 a 60 ms tick; pan to 0, 2 px a step |
+| 45.58 | `fadeOut(50)`, `stopSound(2)`, black |
+| 46.29 | `0x4407c0`: `DATAVA01.001` 0..87, then `DATAVB08.001` (the drive, with lines, stage 201 row 1) |
+| | `0x679e7c = 3` (channel 0 fades), wait for it (at most 12), scene 2000 |
+
+- **Credits.** Both entries are drawn every pass by `0x44d660` (75 frames, `0x4333c0`): the first's
+  frame `0x5d2ba0` goes 0..74 on the 40 ms flag `0xa65ac4`, `0x44d810(50, ...)` waits 50 steps of
+  the 10 ms flag `0x807b68`, the second's `0x5d2bb1` goes 0..74, `0x44d810(150, ...)`, and both go
+  back on `0x6d93cc` until the first is 0.
+- **Steps that redraw run at the frame rate.** `0x6d93cc` is set every 10 ms, but the pans and the
+  credits' way back redraw on every pass, and the trace has a step every ~20 ms (caption and the
+  first pan 10.05 s; the last pan's 164 steps in 3.3 s). The credits' waits redraw nothing and keep
+  to 10 ms.
+- **Escape** sets `0x9d2735`; `0x44d7d0` (and `0x4399f0` in the video loops) clears it, blacks the
+  screen and opens the options menu `0x42daf0`, and returns 1 only if the scene word became 255 or
+  `0x856708` is set (a game was loaded or the player quit). Otherwise the sequence goes on.
+- **`0x43aa10`** plays `DATAVB08.001` up to frame 2250 like `0x43a650`, but draws over each frame,
+  from frame 420: `0x440410` steps twelve credit sprites (entries 26..37, a 147-pass cycle each,
+  drawn by `0x43ffe0` for passes 0..11 and 100..112) and `0x4406e0` a 282 x 188 window at (627, 140)
+  (`0x4404a0`) cross-fading through entries 10..25, sixteen 282 x 188 RGB565 pictures that
+  `0x43fe90` loads and `0x43fdb0`/`0x43fb70` blend into 17 steps; `b[0x5d2f04]` (0..63) rises after
+  frame 343 and falls after 2185. `0x43bb30` loads `DATAVB08.000` (3 frames) into `0x92d280` beside
+  it. Then `0x439820(2)` waits 2 steps of the 250 ms counter and `0x43a650` goes on to 2566.
+- **Cue frames.** `0x435f00(frame, 0, n)` is true when `n` equals its counter `0x6babb6`, cue `n` has
+  not fired (`0x890340[n]`), and the video's frame (`0x8bc174:0x8bc170`) is at or past `frame`; it
+  then marks it and steps the counter. So a callback's cues fire once each, in order, even when a
+  play starts past them.
 
 ---
 
@@ -1288,7 +1377,8 @@ What the cutscene rooms took (2026-10-10):
   `view x = 0` (`0x4365d0`) and stayed at 4.
 - **The intro block (`0x43da20`..`0x43f60b`).** Its talk subs (`0x43d6c0`, `0x43d6f0`, `0x43d770`,
   `0x43d7f0`, `0x43d870`, `0x43d8f0`) loop while speech plays and lift to nothing. `0x43d560(n)`, the
-  story animation, is not lifted: the decompiler loses `eax` across its switch.
+  story animation, is not lifted: the decompiler loses `eax` across its switch. The opening that
+  uses them (`0x43dff0`) is hand-written in the engine (`SceneA00`), from the trace above.
 
 What lifting the dialogue trees took (2026-10-10):
 

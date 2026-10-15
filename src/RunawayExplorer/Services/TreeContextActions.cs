@@ -78,9 +78,9 @@ public readonly record struct PreviewContextActions(
         bool onDisk = node is not null && (node.NodeType & FsNodeType.InArchive) == 0 && !string.IsNullOrEmpty(node.ArchivePath);
 
         return new PreviewContextActions(
-            Zoom: content is ImageResource or AnimationResource or SceneResource,
-            CopyText: content is TextResource,
-            CopyImage: content is ImageResource or AnimationResource or SceneResource,
+            Zoom: content is ImageResource or AnimationResource or SceneResource or RouteResource,
+            CopyText: content is TextResource or RouteResource,
+            CopyImage: content is ImageResource or AnimationResource or SceneResource or RouteResource,
             OpenExternally: content is VideoResource,
             // A scene view is the archive's background; exporting it means the background PNG.
             Export: content is not ErrorResource && (isFile || content is SceneResource),

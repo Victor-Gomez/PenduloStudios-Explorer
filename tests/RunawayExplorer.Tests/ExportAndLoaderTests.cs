@@ -387,6 +387,40 @@ public class BatchExporterTests
         Assert.Equal(4, pngRes.Image.Height);
     }
 
+    [Fact]
+    public void ResourceLoader_LoadsRouteTableAsRouteResource()
+    {
+        var install = new FakeInstall();
+        using (install)
+        {
+            var routes = new Dictionary<(int From, int To), (IReadOnlyList<(int X, int Y)> Waypoints, IReadOnlyList<byte> Hops)>
+            {
+                [(1, 2)] = ([(100, 200), (150, 250)], [2]),
+            };
+            byte[] routeData = SyntheticAssets.RouteTable(routes);
+            byte[] bg = SyntheticAssets.Raster(204, 120);
+
+            File.WriteAllBytes(
+                Path.Combine(install.Root, "Resource", "RESOURCE.F01"),
+                SyntheticArchives.Scene([bg, routeData]));
+
+            var vfs = VirtualFileSystem.Init(install.Root);
+            var temp = new TempFileTracker();
+            var settings = new AppSettings();
+
+            FsNode f01 = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.F01")!;
+            FsNode routeNode = f01.Children.Single(c => c.Size == RouteDecoder.TotalSizeR1);
+
+            var res = Assert.IsType<RouteResource>(ResourceLoader.Load(routeNode, vfs, settings, temp));
+            Assert.Equal(21, res.Matrix.ZoneCount);
+            Assert.Equal(1, res.Matrix.TotalActiveRoutes);
+            Assert.NotNull(res.Background);
+            Assert.Equal(204, res.Background.Width);
+            Assert.Equal(120, res.Background.Height);
+            Assert.Contains("1 active route(s)", res.Summary);
+        }
+    }
+
     private static int IndexOf(byte[] haystack, ReadOnlySpan<byte> needle)
     {
         for (int i = 0; i + needle.Length <= haystack.Length; i++)

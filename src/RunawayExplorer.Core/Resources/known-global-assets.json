@@ -1,0 +1,536 @@
+﻿{
+  "Runaway1": {
+    "118": {
+      "en": "evaluation version badge (48×48)",
+      "es": "insignia versión de evaluación (48×48)"
+    },
+    "119": {
+      "en": "inventory items strip — Chapter 1 (80×1840)",
+      "es": "tira de objetos de inventario — Capítulo 1 (80×1840)"
+    },
+    "120": {
+      "en": "inventory items strip — Chapter 2 (80×2079)",
+      "es": "tira de objetos de inventario — Capítulo 2 (80×2079)"
+    },
+    "121": {
+      "en": "inventory items strip — Chapter 3 (80×3360)",
+      "es": "tira de objetos de inventario — Capítulo 3 (80×3360)"
+    },
+    "122": {
+      "en": "inventory items strip — Chapter 4 (80×3760)",
+      "es": "tira de objetos de inventario — Capítulo 4 (80×3760)"
+    },
+    "123": {
+      "en": "inventory items strip — Chapter 5 (80×1360)",
+      "es": "tira de objetos de inventario — Capítulo 5 (80×1360)"
+    },
+    "124": {
+      "en": "inventory items strip — Chapter 6 (80×1920)",
+      "es": "tira de objetos de inventario — Capítulo 6 (80×1920)"
+    },
+    "125": {
+      "en": "font bitmap (regular)",
+      "es": "mapa de bits de fuente (normal)"
+    },
+    "126": {
+      "en": "glyph table (regular)",
+      "es": "tabla de glifos (normal)"
+    },
+    "127": {
+      "en": "UI strip — menu options (700×74)",
+      "es": "tira de IU — opciones de menú (700×74)"
+    },
+    "128": {
+      "en": "UI strip — save game (700×74)",
+      "es": "tira de IU — guardar partida (700×74)"
+    },
+    "129": {
+      "en": "UI strip — load game (700×74)",
+      "es": "tira de IU — cargar partida (700×74)"
+    },
+    "130": {
+      "en": "UI strip — controls (700×74)",
+      "es": "tira de IU — controles (700×74)"
+    },
+    "131": {
+      "en": "inventory screen backdrop (1024×600)",
+      "es": "fondo de pantalla de inventario (1024×600)"
+    },
+    "132": {
+      "en": "main menu panel (1024×600)",
+      "es": "panel del menú principal (1024×600)"
+    },
+    "133": {
+      "en": "inventory grid backing (768×576)",
+      "es": "rejilla de fondo del inventario (768×576)"
+    },
+    "135": {
+      "en": "talking head — Brian inventory animation 1",
+      "es": "busto parlante — animación Brian inventario 1"
+    },
+    "136": {
+      "en": "talking head — Brian inventory animation 2",
+      "es": "busto parlante — animación Brian inventario 2"
+    },
+    "137": {
+      "en": "talking head — Brian inventory animation 3",
+      "es": "busto parlante — animación Brian inventario 3"
+    },
+    "138": {
+      "en": "talking head — Brian inventory animation 4",
+      "es": "busto parlante — animación Brian inventario 4"
+    },
+    "139": {
+      "en": "talking head — Brian inventory animation 5",
+      "es": "busto parlante — animación Brian inventario 5"
+    },
+    "140": {
+      "en": "talking head — Brian inventory animation 6",
+      "es": "busto parlante — animación Brian inventario 6"
+    },
+    "141": {
+      "en": "talking head — Brian inventory animation 7",
+      "es": "busto parlante — animación Brian inventario 7"
+    },
+    "142": {
+      "en": "talking head — Brian inventory animation 8",
+      "es": "busto parlante — animación Brian inventario 8"
+    },
+    "143": {
+      "en": "item close-up — Mayan crucifix in casing (1024×600)",
+      "es": "primer plano — crucifijo maya en funda (1024×600)"
+    },
+    "144": {
+      "en": "item close-up — cleaned Mayan crucifix (1024×600)",
+      "es": "primer plano — crucifijo maya limpio (1024×600)"
+    },
+    "145": {
+      "en": "item close-up — Mayan crucifix key (1024×600)",
+      "es": "primer plano — llave del crucifijo maya (1024×600)"
+    },
+    "146": {
+      "en": "item close-up — Douglas & Co. Mining map (1024×600)",
+      "es": "primer plano — mapa minero Douglas & Co. (1024×600)"
+    },
+    "147": {
+      "en": "item close-up — severed finger in jar (1024×600)",
+      "es": "primer plano — dedo amputado en frasco (1024×600)"
+    },
+    "148": {
+      "en": "font bitmap (bold)",
+      "es": "mapa de bits de fuente (negrita)"
+    },
+    "149": {
+      "en": "glyph table (bold)",
+      "es": "tabla de glifos (negrita)"
+    },
+    "150": {
+      "en": "UI interaction click / select SFX",
+      "es": "efecto de sonido clic / selección de IU"
+    },
+    "151": {
+      "en": "item close-up — Hopi sacred bush branch (1024×600)",
+      "es": "primer plano — rama del arbusto sagrado hopi (1024×600)"
+    },
+    "152": {
+      "en": "end credits roll strip (400×5870)",
+      "es": "tira de créditos finales (400×5870)"
+    },
+    "154": {
+      "en": "end credits roll backing (400×5870)",
+      "es": "fondo de créditos finales (400×5870)"
+    },
+    "155": {
+      "en": "options menu volume knob animation",
+      "es": "animación botón de volumen del menú de opciones"
+    },
+    "156": {
+      "en": "options menu brightness slider animation",
+      "es": "animación deslizador de brillo del menú de opciones"
+    },
+    "157": {
+      "en": "CD disc loading icon (48×48)",
+      "es": "icono de carga disco CD (48×48)"
+    },
+    "158": {
+      "en": "item close-up — Mojave bank brochure (1024×600)",
+      "es": "primer plano — folleto del banco de Mojave (1024×600)"
+    },
+    "159": {
+      "en": "chapter title labels animation (1-6)",
+      "es": "animación títulos de capítulo (1-6)"
+    },
+    "161": {
+      "en": "font bitmap (small)",
+      "es": "mapa de bits de fuente (pequeña)"
+    },
+    "162": {
+      "en": "glyph table (small)",
+      "es": "tabla de glifos (pequeña)"
+    }
+  },
+  "Runaway2": {
+    "80": {
+      "en": "chapter selection board — start / prologue (1024×600)",
+      "es": "panel de selección de capítulo — inicio / prólogo (1024×600)"
+    },
+    "81": {
+      "en": "chapter selection board — Chapter 1 completed (1024×600)",
+      "es": "panel de selección de capítulo — Capítulo 1 completado (1024×600)"
+    },
+    "82": {
+      "en": "chapter selection board — Chapter 2 completed (1024×600)",
+      "es": "panel de selección de capítulo — Capítulo 2 completado (1024×600)"
+    },
+    "83": {
+      "en": "chapter selection board — Chapter 3 completed (1024×600)",
+      "es": "panel de selección de capítulo — Capítulo 3 completado (1024×600)"
+    },
+    "84": {
+      "en": "chapter selection board — Chapter 4 completed (1024×600)",
+      "es": "panel de selección de capítulo — Capítulo 4 completado (1024×600)"
+    },
+    "85": {
+      "en": "chapter selection board — Chapter 5 completed (1024×600)",
+      "es": "panel de selección de capítulo — Capítulo 5 completado (1024×600)"
+    },
+    "86": {
+      "en": "chapter selection board — Chapter 6 completed (1024×600)",
+      "es": "panel de selección de capítulo — Capítulo 6 completado (1024×600)"
+    },
+    "87": {
+      "en": "chapter selection animated preview — Gina jumping from plane",
+      "es": "vista previa animada de selección de capítulo — Gina saltando en paracaídas"
+    },
+    "88": {
+      "en": "chapter selection animated preview — Chapter 1",
+      "es": "vista previa animada de selección de capítulo — Capítulo 1"
+    },
+    "89": {
+      "en": "chapter selection animated preview — Chapter 2",
+      "es": "vista previa animada de selección de capítulo — Capítulo 2"
+    },
+    "90": {
+      "en": "chapter selection animated preview — Chapter 3",
+      "es": "vista previa animada de selección de capítulo — Capítulo 3"
+    },
+    "91": {
+      "en": "chapter selection animated preview — Chapter 4",
+      "es": "vista previa animada de selección de capítulo — Capítulo 4"
+    },
+    "92": {
+      "en": "chapter selection animated preview — Chapter 5",
+      "es": "vista previa animada de selección de capítulo — Capítulo 5"
+    },
+    "93": {
+      "en": "chapter selection animated preview — Chapter 6",
+      "es": "vista previa animada de selección de capítulo — Capítulo 6"
+    },
+    "94": {
+      "en": "chapter selection animated preview — bonus / epilogue",
+      "es": "vista previa animada de selección de capítulo — epílogo"
+    },
+    "95": {
+      "en": "chapter selection photograph — Chapter 1: Trapped in the Jungle",
+      "es": "fotografía de selección de capítulo — Capítulo 1: La isla de Mala"
+    },
+    "96": {
+      "en": "chapter selection photograph — Chapter 2: Surfin' Mala",
+      "es": "fotografía de selección de capítulo — Capítulo 2: Surfeando en Mala"
+    },
+    "97": {
+      "en": "chapter selection photograph — Chapter 3: Simpler than an Amoeba",
+      "es": "fotografía de selección de capítulo — Capítulo 3: Más simple que una ameba"
+    },
+    "98": {
+      "en": "chapter selection photograph — Chapter 4: He Who Knows Does Not Speak",
+      "es": "fotografía de selección de capítulo — Capítulo 4: El hombre que habla con los ornitorrincos"
+    },
+    "99": {
+      "en": "chapter selection photograph — Chapter 5: Shipped to the Past",
+      "es": "fotografía de selección de capítulo — Capítulo 5: Allerton Court"
+    },
+    "100": {
+      "en": "chapter selection photograph — Chapter 6: The Hidden Beacon of Avernus",
+      "es": "fotografía de selección de capítulo — Capítulo 6: El templo oculto"
+    },
+    "101": {
+      "en": "chapter selection photograph — bonus / epilogue",
+      "es": "fotografía de selección de capítulo — epílogo"
+    },
+    "102": {
+      "en": "title logo — Runaway: The Dream of the Turtle",
+      "es": "logotipo — Runaway: The Dream of the Turtle"
+    },
+    "112": {
+      "en": "cursor atlas — standard pointers (904×540)",
+      "es": "atlas de cursores — punteros estándar (904×540)"
+    },
+    "113": {
+      "en": "cursor atlas — action icons (904×540)",
+      "es": "atlas de cursores — iconos de acción (904×540)"
+    },
+    "114": {
+      "en": "cursor atlas — magnifying glass (904×540)",
+      "es": "atlas de cursores — lupa (904×540)"
+    },
+    "115": {
+      "en": "cursor atlas — mouth / talk (904×540)",
+      "es": "atlas de cursores — boca / hablar (904×540)"
+    },
+    "116": {
+      "en": "cursor atlas — gears / interact (904×540)",
+      "es": "atlas de cursores — engranajes / interactuar (904×540)"
+    },
+    "117": {
+      "en": "cursor atlas — crosshair / target (904×540)",
+      "es": "atlas de cursores — mira / apuntar (904×540)"
+    },
+    "120": {
+      "en": "inventory panel backing (672×336)",
+      "es": "panel de inventario (672×336)"
+    },
+    "121": {
+      "en": "inventory items frame (672×336)",
+      "es": "marco de objetos de inventario (672×336)"
+    },
+    "123": {
+      "en": "font bitmap (regular)",
+      "es": "mapa de bits de fuente (normal)"
+    },
+    "124": {
+      "en": "glyph table (regular)",
+      "es": "tabla de glifos (normal)"
+    },
+    "125": {
+      "en": "font bitmap (dialogue)",
+      "es": "mapa de bits de fuente (diálogos)"
+    },
+    "126": {
+      "en": "glyph table (dialogue)",
+      "es": "tabla de glifos (diálogos)"
+    },
+    "127": {
+      "en": "UI strip — menu options (700×74)",
+      "es": "tira de IU — opciones de menú (700×74)"
+    },
+    "128": {
+      "en": "UI strip — save game (700×74)",
+      "es": "tira de IU — guardar partida (700×74)"
+    },
+    "129": {
+      "en": "UI strip — load game (700×74)",
+      "es": "tira de IU — cargar partida (700×74)"
+    },
+    "130": {
+      "en": "UI strip — controls (700×74)",
+      "es": "tira de IU — controles (700×74)"
+    },
+    "133": {
+      "en": "inventory backing (768×576)",
+      "es": "fondo del inventario (768×576)"
+    },
+    "140": {
+      "en": "chapter title card — Chapter 1: Trapped in the Jungle (1024×600)",
+      "es": "pantalla de capítulo — Capítulo 1: La isla de Mala (1024×600)"
+    },
+    "141": {
+      "en": "chapter title card — Chapter 2: Surfin' Mala (1024×600)",
+      "es": "pantalla de capítulo — Capítulo 2: Surfeando en Mala (1024×600)"
+    },
+    "142": {
+      "en": "chapter title card — Chapter 3: Simpler than an Amoeba (1024×600)",
+      "es": "pantalla de capítulo — Capítulo 3: Más simple que una ameba (1024×600)"
+    },
+    "143": {
+      "en": "chapter title card — Chapter 4: He Who Knows Does Not Speak (1024×600)",
+      "es": "pantalla de capítulo — Capítulo 4: El hombre que habla con los ornitorrincos (1024×600)"
+    },
+    "144": {
+      "en": "chapter title card — Chapter 5: Shipped to the Past (1024×600)",
+      "es": "pantalla de capítulo — Capítulo 5: Allerton Court (1024×600)"
+    },
+    "145": {
+      "en": "chapter title card — Chapter 6: The Hidden Beacon of Avernus (1024×600)",
+      "es": "pantalla de capítulo — Capítulo 6: El templo oculto (1024×600)"
+    },
+    "146": {
+      "en": "font bitmap (bold)",
+      "es": "mapa de bits de fuente (negrita)"
+    },
+    "147": {
+      "en": "glyph table (bold)",
+      "es": "tabla de glifos (negrita)"
+    },
+    "149": {
+      "en": "end credits roll strip (400×8510)",
+      "es": "tira de créditos finales (400×8510)"
+    },
+    "150": {
+      "en": "end credits character animation 1",
+      "es": "animación de créditos finales 1"
+    },
+    "151": {
+      "en": "end credits roll backing (400×8510)",
+      "es": "fondo de créditos finales (400×8510)"
+    },
+    "152": {
+      "en": "end credits character animation 2",
+      "es": "animación de créditos finales 2"
+    },
+    "154": {
+      "en": "luxury yacht deck close-up (1024×600)",
+      "es": "cubierta del yate (1024×600)"
+    },
+    "269": {
+      "en": "options menu panel (1024×600)",
+      "es": "panel de menú de opciones (1024×600)"
+    }
+  },
+  "Runaway3": {
+    "10": {
+      "en": "main menu level selection (1280×720)",
+      "es": "menú principal: selección de nivel (1280×720)"
+    },
+    "13": {
+      "en": "bitmap 200×60 — UI button / logo",
+      "es": "bitmap 200×60 — botón de IU / logotipo"
+    },
+    "14": {
+      "en": "bitmap 600×100 — title logo: Runaway A Twist of Fate",
+      "es": "bitmap 600×100 — logotipo: Runaway A Twist of Fate"
+    },
+    "40": {
+      "en": "scene selection board — Prologue Brian (1280×720)",
+      "es": "panel de selección — Prólogo Brian (1280×720)"
+    },
+    "41": {
+      "en": "scene selection board — Prologue Gina (1280×720)",
+      "es": "panel de selección — Prólogo Gina (1280×720)"
+    },
+    "42": {
+      "en": "scene selection board — Chapter 1 (1280×720)",
+      "es": "panel de selección — Capítulo 1 (1280×720)"
+    },
+    "43": {
+      "en": "scene selection board — Chapter 2 (1280×720)",
+      "es": "panel de selección — Capítulo 2 (1280×720)"
+    },
+    "44": {
+      "en": "scene selection board — Chapter 3 (1280×720)",
+      "es": "panel de selección — Capítulo 3 (1280×720)"
+    },
+    "45": {
+      "en": "scene selection board — Chapter 4 (1280×720)",
+      "es": "panel de selección — Capítulo 4 (1280×720)"
+    },
+    "46": {
+      "en": "scene selection board — Chapter 5 Brian (1280×720)",
+      "es": "panel de selección — Capítulo 5 Brian (1280×720)"
+    },
+    "47": {
+      "en": "scene selection board — Chapter 5 Gina (1280×720)",
+      "es": "panel de selección — Capítulo 5 Gina (1280×720)"
+    },
+    "48": {
+      "en": "scene selection board — Chapter 5 Kordsmeier (1280×720)",
+      "es": "panel de selección — Capítulo 5 Kordsmeier (1280×720)"
+    },
+    "49": {
+      "en": "scene selection board — Chapter 6 Brian (1280×720)",
+      "es": "panel de selección — Capítulo 6 Brian (1280×720)"
+    },
+    "50": {
+      "en": "scene selection board — Chapter 6 Gina (1280×720)",
+      "es": "panel de selección — Capítulo 6 Gina (1280×720)"
+    },
+    "103": {
+      "en": "bitmap 1280×720 — pause menu screen",
+      "es": "bitmap 1280×720 — pantalla del menú de pausa"
+    },
+    "104": {
+      "en": "bitmap 128×192 — loading spinner atlas",
+      "es": "bitmap 128×192 — atlas de rueda de carga"
+    },
+    "112": {
+      "en": "bitmap 1280×1024 — mouse cursor atlas",
+      "es": "bitmap 1280×1024 — atlas de cursores del ratón"
+    },
+    "113": {
+      "en": "bitmap 1280×1024 — cursor shadow mask",
+      "es": "bitmap 1280×1024 — máscara de sombra del cursor"
+    },
+    "114": {
+      "en": "bitmap 1280×1024 — cursor actions atlas",
+      "es": "bitmap 1280×1024 — atlas de acciones del cursor"
+    },
+    "115": {
+      "en": "bitmap 1280×1024 — inventory items sheet 1",
+      "es": "bitmap 1280×1024 — hoja de objetos de inventario 1"
+    },
+    "116": {
+      "en": "bitmap 1280×1024 — inventory items mask 1",
+      "es": "bitmap 1280×1024 — máscara de objetos de inventario 1"
+    },
+    "117": {
+      "en": "bitmap 1280×1024 — inventory items sheet 2",
+      "es": "bitmap 1280×1024 — hoja de objetos de inventario 2"
+    },
+    "120": {
+      "en": "bitmap 1280×1024 — inventory items sheet 3",
+      "es": "bitmap 1280×1024 — hoja de objetos de inventario 3"
+    },
+    "121": {
+      "en": "bitmap 1280×1024 — inventory items mask 3",
+      "es": "bitmap 1280×1024 — máscara de objetos de inventario 3"
+    },
+    "135": {
+      "en": "bitmap 256×256 — UI widget / compass",
+      "es": "bitmap 256×256 — widget de IU / brújula"
+    },
+    "137": {
+      "en": "bitmap 512×512 — dialogue portrait backing",
+      "es": "bitmap 512×512 — fondo de retrato de diálogo"
+    },
+    "140": {
+      "en": "chapter title card — Chapter 1: Brian Basco Is Dead (1280×720)",
+      "es": "pantalla de capítulo — Capítulo 1: Brian Basco ha muerto (1280×720)"
+    },
+    "141": {
+      "en": "chapter title card — Chapter 2: The Art of Running Away (1280×720)",
+      "es": "pantalla de capítulo — Capítulo 2: El arte de escapar (1280×720)"
+    },
+    "142": {
+      "en": "chapter title card — Chapter 3: A Timely Suicide (1280×720)",
+      "es": "pantalla de capítulo — Capítulo 3: Un suicidio bien oportuno (1280×720)"
+    },
+    "143": {
+      "en": "chapter title card — Chapter 4: An Unexpected Ally (1280×720)",
+      "es": "pantalla de capítulo — Capítulo 4: Un aliado inesperado (1280×720)"
+    },
+    "144": {
+      "en": "chapter title card — Chapter 5: Deconstructing Brian (1280×720)",
+      "es": "pantalla de capítulo — Capítulo 5: Brian en todos sus estados (1280×720)"
+    },
+    "145": {
+      "en": "chapter title card — Chapter 6: The End Is Here (1280×720)",
+      "es": "pantalla de capítulo — Capítulo 6: El final está cerca (1280×720)"
+    },
+    "146": {
+      "en": "chapter title card — Epilogue & Flashbacks (1280×720)",
+      "es": "pantalla de capítulo — Capítulo 7: Epílogo y recuerdos (1280×720)"
+    },
+    "147": {
+      "en": "chapter title card — Gina's Story (1280×720)",
+      "es": "pantalla de capítulo — La historia de Gina (1280×720)"
+    },
+    "148": {
+      "en": "chapter title card — Brian's Awakening (1280×720)",
+      "es": "pantalla de capítulo — El despertar de Brian (1280×720)"
+    },
+    "312": {
+      "en": "main menu title backdrop (1280×720)",
+      "es": "fondo de pantalla del menú principal (1280×720)"
+    }
+  }
+}

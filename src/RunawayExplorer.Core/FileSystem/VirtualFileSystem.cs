@@ -525,7 +525,7 @@ public sealed class VirtualFileSystem
         }
         else if (node.IsFile && node.Parent?.Parent?.Name == ScenesFolder)
         {
-            node.FriendlyName = SceneCatalog.FormatSceneEntryLabel(node, language);
+            node.FriendlyName = SceneCatalog.FormatSceneEntryLabel(node, language, GameVersion);
         }
         else if (node.IsFile && node.Parent?.Parent?.Name == GlobalFolder)
         {
@@ -705,8 +705,9 @@ public sealed class VirtualFileSystem
                 EntryIndex = e.Index,
                 ArchivePath = path,
                 Image = e.ToImageInfo(),
+                GameVersion = gameVersion,
             };
-            child.FriendlyName = SceneCatalog.FormatSceneEntryLabel(child, language);
+            child.FriendlyName = SceneCatalog.FormatSceneEntryLabel(child, language, gameVersion);
             Attach(node, child);
         }
 
@@ -714,8 +715,8 @@ public sealed class VirtualFileSystem
     }
 
     /// <summary>The tree label for a scene entry: index plus the decoded facts that identify it at a glance.</summary>
-    public static string SceneEntryLabel(FsNode entry) =>
-        SceneCatalog.FormatSceneEntryLabel(entry, null);
+    public static string SceneEntryLabel(FsNode entry, GameVersion game = GameVersion.Runaway1) =>
+        SceneCatalog.FormatSceneEntryLabel(entry, null, game);
 
     private static FsNode BuildAudioArchive(string path, EntryKind kind, AudioInfo pcm, bool dedupe, string language, GameVersion gameVersion)
     {
@@ -773,6 +774,7 @@ public sealed class VirtualFileSystem
                 EntryIndex = e.Index,
                 ArchivePath = path,
                 Audio = audioInfo,
+                GameVersion = gameVersion,
             };
             child.FriendlyName = $"{child.Name}  {FormatDuration(audioInfo.DurationSeconds(e.Size))}";
             Attach(node, child);
@@ -1661,6 +1663,7 @@ public sealed class VirtualFileSystem
             ArchivePath = path,
             Image = c.Kind is EntryKind.GlobalData or EntryKind.Ambient or EntryKind.Font ? null : c.ToImageInfo(),
             Audio = audio,
+            GameVersion = gameVersion,
         });
     }
 
