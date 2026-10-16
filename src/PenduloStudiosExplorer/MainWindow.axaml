@@ -1,4 +1,4 @@
-﻿<Window x:Class="PenduloStudiosExplorer.MainWindow"
+<Window x:Class="PenduloStudiosExplorer.MainWindow"
         xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:PenduloStudiosExplorer"
@@ -257,6 +257,20 @@
                                 <ToggleButton x:Name="RouteInfoTextToggle" Classes="segment" Margin="6,0,0,0"
                                               Content="{DynamicResource Option_RoutesRaw}" Click="RouteInfoTextToggle_Click" ToolTip.Tip="Toggle raw text and hex dump"/>
                             </StackPanel>
+                            <StackPanel x:Name="PaletteOverlayGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" IsVisible="False">
+                                <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{DynamicResource Label_Palette}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
+                                <Border x:Name="PaletteModeBorder" Classes="segmented" VerticalAlignment="Center" ToolTip.Tip="Palette view mode">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="PaletteModeBlockRadio" Classes="segment" GroupName="PaletteModeGroup"
+                                                     Content="{DynamicResource Option_PaletteBlock}" Click="PaletteModeRadio_Click" Tag="block" IsChecked="True"/>
+                                        <RadioButton x:Name="PaletteModeAssembledRadio" Classes="segment" GroupName="PaletteModeGroup"
+                                                     Content="{DynamicResource Option_PaletteAssembled}" Click="PaletteModeRadio_Click" Tag="assembled"/>
+                                    </StackPanel>
+                                </Border>
+                                <ToggleButton x:Name="PaletteInfoTextToggle" Classes="segment" Margin="6,0,0,0"
+                                              Content="{DynamicResource Option_RoutesRaw}" Click="PaletteInfoTextToggle_Click" ToolTip.Tip="Toggle raw text and hex dump"/>
+                            </StackPanel>
                             <StackPanel x:Name="ImageBackgroundGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" IsVisible="False">
                                 <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="{DynamicResource Label_Background}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
@@ -344,7 +358,10 @@
                                     <Image x:Name="ImageBackground" Canvas.Left="0" Canvas.Top="0" ZIndex="0" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None"/>
                                     <Image x:Name="PreviewImage" Canvas.Left="0" Canvas.Top="0" ZIndex="1" Stretch="None"
-                                           RenderOptions.BitmapInterpolationMode="None"/>
+                                           RenderOptions.BitmapInterpolationMode="None"
+                                           PointerMoved="PreviewImage_PointerMoved"
+                                           PointerExited="PreviewImage_PointerExited"
+                                           PointerPressed="PreviewImage_PointerPressed"/>
                                     <Canvas x:Name="SceneOverlayLayer" Canvas.Left="0" Canvas.Top="0" ZIndex="2"/>
                                     <Image x:Name="SceneMaskImage" Canvas.Left="0" Canvas.Top="0" ZIndex="3" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None" Opacity="0.55" IsVisible="False"/>

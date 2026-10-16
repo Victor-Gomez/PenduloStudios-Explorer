@@ -5,6 +5,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="Assets\**\*.axaml" />
+    <AvaloniaResource Include="Assets\**\*.svg" />
     <AvaloniaResource Include="Assets\PenduloStudiosExplorer.ico" />
     <AvaloniaResource Include="Assets\PenduloStudiosExplorer.png" />
   </ItemGroup>
@@ -27,8 +29,8 @@
     <!-- Bumped per release. The release workflow overrides both with -p:Version=/-p:InformationalVersion=
          derived from the pushed tag, so a published build reports the tag it was built from; a local
          build reports whatever is checked in here. Help > About and the update check both read these. -->
-    <Version>6.6.0</Version>
-    <InformationalVersion>6.6.0-dev</InformationalVersion>
+    <Version>6.7.0</Version>
+    <InformationalVersion>6.7.0-dev</InformationalVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

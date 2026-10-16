@@ -135,6 +135,8 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
             {
                 if ((Node.NodeType & FsNodeType.Root) != 0)
                     return GetVectorIcon(RootVectorIcon);
+                if ((Node.NodeType & FsNodeType.InArchive) != 0)
+                    return GetVectorIcon(IsExpanded ? FolderOpenVectorIcon : FolderClosedVectorIcon);
                 if (Node.ArchivePath is not null)
                     return GetVectorIcon(ArchiveVectorIcon);
                 return GetVectorIcon(IsExpanded ? FolderOpenVectorIcon : FolderClosedVectorIcon);
@@ -142,6 +144,9 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
 
             if (ResourceTypeFilter.IsNavigationMesh(Node))
                 return GetVectorIcon("ModelTypeIcon");
+
+            if (ResourceTypeFilter.IsPalette(Node))
+                return GetVectorIcon("ImageTypeIcon");
 
             if (Node.Kind == EntryKind.GlobalData
                 && Node.ArchivePath is not null

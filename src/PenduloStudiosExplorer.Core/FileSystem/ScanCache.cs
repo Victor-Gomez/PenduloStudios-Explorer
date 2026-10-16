@@ -21,7 +21,7 @@ public sealed class ScanCache
     };
 
     /// <summary>Bump when the classifier or cache schema changes so old answers are discarded.</summary>
-    public const int FormatVersion = 20;
+    public const int FormatVersion = 22;
 
     public sealed class CachedEntry
     {
@@ -47,7 +47,10 @@ public sealed class ScanCache
         /// </summary>
         [JsonPropertyName("l")] public string? Label { get; set; }
 
-        public ImageInfo? ToImageInfo() => Kind is EntryKind.Data ? null : new ImageInfo
+        /// <summary>Nested sub-entries if this entry is an unpacked container (such as an embedded image package).</summary>
+        [JsonPropertyName("c")] public List<CachedEntry>? Children { get; set; }
+
+        public ImageInfo? ToImageInfo() => Kind is EntryKind.Data or EntryKind.Folder ? null : new ImageInfo
         {
             Width = Width, Height = Height, X = X, Y = Y, Frames = Frames, Sharpness = Sharpness, IsMask = IsMask, IsAtlas = IsAtlas,
         };

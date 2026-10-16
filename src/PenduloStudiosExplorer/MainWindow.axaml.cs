@@ -52,6 +52,7 @@ public partial class MainWindow : Window
     private bool _initializingGameSelector;
     private ResourceContent? _currentContent;
     private RouteResource? _currentRoute;
+    private PaletteResource? _currentPalette;
 
     private WriteableBitmap? _animOnionCanvas;
     private double _animSpeedMultiplier = 1.0;
@@ -857,7 +858,7 @@ public partial class MainWindow : Window
     {
         string stem = Path.GetFileNameWithoutExtension(BatchExporter.ExportFileName(node));
         if (node.IsDirectory)
-            stem = BatchExporter.SanitizeSegment(node.Name) + "_background";
+            stem = BatchExporter.SanitizeSegment(node.Name) + (content is SceneResource ? "_background" : "");
 
         switch (content)
         {
@@ -879,6 +880,15 @@ public partial class MainWindow : Window
 
             case RouteResource route:
                 await ExportTextAsync(route.Summary, stem + "_routes.txt");
+                break;
+
+            case PaletteResource palette:
+                if (PaletteInfoTextToggle.IsChecked == true)
+                    await ExportTextAsync(palette.Summary, stem + "_palette.txt");
+                else
+                    await ExportImageAsync(
+                        (PaletteModeAssembledRadio.IsChecked == true && palette.AssembledImage is not null) ? palette.AssembledImage : palette.Image,
+                        stem + "_palette.png");
                 break;
 
             case SoundResource sound:
@@ -1395,6 +1405,12 @@ public partial class MainWindow : Window
         {
             image = route.Background;
         }
+        else if (_currentContent is PaletteResource pal)
+        {
+            image = (PaletteModeAssembledRadio.IsChecked == true && pal.AssembledImage is not null)
+                ? pal.AssembledImage
+                : pal.Image;
+        }
 
         if (image is null)
             return;
@@ -1412,9 +1428,12 @@ public partial class MainWindow : Window
 
     private async void PreviewCopyAllText_Click(object? sender, RoutedEventArgs e)
     {
-        string text = _currentContent is RouteResource route && string.IsNullOrEmpty(TextPanel.Text)
-            ? route.Summary
-            : (TextPanel.Text ?? "");
+        string text = _currentContent switch
+        {
+            RouteResource route when string.IsNullOrEmpty(TextPanel.Text) => route.Summary,
+            PaletteResource palette when string.IsNullOrEmpty(TextPanel.Text) => palette.Summary,
+            _ => (TextPanel.Text ?? ""),
+        };
         await Dialogs.SetClipboardTextAsync(this, text);
         SetStatus("Copied all text.");
     }
@@ -1782,9 +1801,27 @@ public partial class MainWindow : Window
         if (_vfs is null)
             return;
 
+        VirtualFileSystem vfs = _vfs;
         bool isSceneArchive = folder.Parent?.Name == VirtualFileSystem.ScenesFolder && folder.ArchivePath is not null;
         if (!isSceneArchive)
         {
+            if (folder.Children.Count > 0 && (folder.Size > 0 || folder.Children.All(c => c.Kind == EntryKind.Overlay)))
+            {
+                AppSettings settings = _settings;
+                TempFileTracker tempFiles = _tempFiles;
+                ResourceContent content = await Task.Run(() => ResourceLoader.Load(folder, vfs, settings, tempFiles));
+                if (generation != _resourceLoadGeneration)
+                    return;
+
+                if (content is AnimationResource anim)
+                {
+                    _currentContent = anim;
+                    ShowContent(anim);
+                    SetStatus($"{folder.GetPath()}  -  {FormatContentMetadata(folder, anim)}");
+                    return;
+                }
+            }
+
             bool hasDialogue = folder.Children.Any(c => c.Kind == EntryKind.Dialogue || c.Subtitle is not null);
             if (hasDialogue)
             {
@@ -1801,7 +1838,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        VirtualFileSystem vfs = _vfs;
         SceneResource scene = await Task.Run(() => ResourceLoader.LoadScene(folder, vfs));
         if (generation != _resourceLoadGeneration)
             return;
@@ -1860,6 +1896,10 @@ public partial class MainWindow : Window
             ImageResource i => $"{i.Kind}, {i.Image.Width}×{i.Image.Height}",
             AnimationResource { Asset: CharacterSpriteAsset c } =>
                 $"character animation, {c.FrameCount} frames, bounding box {c.Bounds.Width}×{c.Bounds.Height} at canvas {c.Bounds.X},{c.Bounds.Y}",
+            AnimationResource { Asset: YesterdayImagePackage y } =>
+                $"image package, {y.FrameCount} images ({y.Bounds.Width}×{y.Bounds.Height} max)",
+            AnimationResource a when node.Kind == EntryKind.Folder =>
+                $"sprite package, {a.Asset.FrameCount} sprites ({a.Asset.Bounds.Width}×{a.Asset.Bounds.Height} max)",
             AnimationResource a => $"animation, {a.Asset.FrameCount} frames, bounding box {a.Asset.Bounds.Width}×{a.Asset.Bounds.Height} at screen {a.Asset.Bounds.X},{a.Asset.Bounds.Y}" +
                                    (a.Asset is SpriteAsset { DescriptorCount: > 0 } sa ? $", {sa.DescriptorCount} descriptor record(s) skipped" : ""),
             SoundResource s => s.Pcm.Format switch
@@ -1871,6 +1911,7 @@ public partial class MainWindow : Window
             VideoResource => "Bink video, header restored",
             TextResource t => $"{t.Text.Length:N0} chars",
             RouteResource r => $"walk route mesh, {r.Matrix.TotalActiveRoutes} active routes across {r.Matrix.ZoneCount} zones",
+            PaletteResource p => $"palette, {p.Palette.DefinedCount} colours{(p.AssembledPalette is not null && p.AssembledPalette.DefinedCount > p.Palette.DefinedCount ? $" ({p.AssembledPalette.DefinedCount} assembled)" : "")}",
             ErrorResource => "load failed",
             _ => "",
         };
@@ -1922,6 +1963,9 @@ public partial class MainWindow : Window
         RouteGraphCanvas.IsVisible = false;
         RouteOverlayGroup.IsVisible = false;
         _currentRoute = null;
+
+        _currentPalette = null;
+        PaletteOverlayGroup.IsVisible = false;
     }
 
     private void ShowContent(ResourceContent content)
@@ -1932,6 +1976,10 @@ public partial class MainWindow : Window
         {
             case ImageResource image:
                 ShowImage(image);
+                break;
+
+            case PaletteResource palette:
+                ShowPalette(palette);
                 break;
 
             case RouteResource route:
@@ -2475,6 +2523,180 @@ public partial class MainWindow : Window
         }
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Palette viewer (swatch grid, hover inspector, assembled/block toggle)
+    // ---------------------------------------------------------------------------------------------
+
+    private void ShowPalette(PaletteResource palette)
+    {
+        _currentPalette = palette;
+        PaletteOverlayGroup.IsVisible = true;
+        PaletteInfoTextToggle.IsChecked = false;
+
+        bool hasAssembled = palette.AssembledPalette is not null && palette.AssembledPalette.DefinedCount > palette.Palette.DefinedCount;
+        PaletteModeBorder.IsVisible = hasAssembled;
+        PaletteModeBlockRadio.IsChecked = true;
+
+        UpdatePaletteDisplay();
+    }
+
+    private void UpdatePaletteDisplay()
+    {
+        if (_currentPalette is null) return;
+
+        bool showAssembled = PaletteModeAssembledRadio.IsChecked == true && _currentPalette.AssembledImage is not null;
+        DecodedImage image = showAssembled ? _currentPalette.AssembledImage! : _currentPalette.Image;
+
+        PreviewImage.Source = BitmapConverter.ToBitmap(image);
+        PreviewImage.IsVisible = true;
+        ImageBackground.Source = null;
+        ImageBackground.IsVisible = false;
+        SceneMaskImage.Source = null;
+        SceneMaskImage.IsVisible = false;
+        SceneOverlayLayer.Children.Clear();
+        RouteGraphCanvas.Children.Clear();
+        RouteGraphCanvas.IsVisible = false;
+
+        ImageStage.Background = Checkerboard;
+        ImageStage.Width = image.Width;
+        ImageStage.Height = image.Height;
+        Canvas.SetLeft(PreviewImage, 0);
+        Canvas.SetTop(PreviewImage, 0);
+        PreviewImage.Opacity = 1.0;
+
+        int count = showAssembled && _currentPalette.AssembledPalette is not null
+            ? _currentPalette.AssembledPalette.DefinedCount
+            : _currentPalette.Palette.DefinedCount;
+        int byteCount = _currentPalette.IsVga6Bit ? count * 3 : count * 2;
+        string kindLabel = showAssembled
+            ? $"Assembled 256-colour palette ({_currentPalette.Palette.DefinedCount} scene + {count - _currentPalette.Palette.DefinedCount} shared tail)"
+            : $"Palette block: {count} colours ({byteCount:N0} bytes, {(_currentPalette.IsVga6Bit ? "6-bit VGA" : "RGB565")})";
+        ImageInfoText.Text = $"{kindLabel}. 16×16 swatch grid. Hover a swatch for slot details, click to copy hex.";
+
+        ImagePanel.IsVisible = true;
+        _imageZoom.Fit();
+    }
+
+    private void PaletteModeRadio_Click(object? sender, RoutedEventArgs e)
+    {
+        UpdatePaletteDisplay();
+    }
+
+    private void PaletteInfoTextToggle_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_currentPalette is null) return;
+        bool showText = PaletteInfoTextToggle.IsChecked == true;
+        if (showText)
+        {
+            TextPanel.Text = _currentPalette.Summary;
+            TextContainer.IsVisible = true;
+            TextPanel.IsVisible = true;
+            ImagePanel.IsVisible = false;
+        }
+        else
+        {
+            TextContainer.IsVisible = false;
+            TextPanel.IsVisible = false;
+            ImagePanel.IsVisible = true;
+        }
+    }
+
+    private void PreviewImage_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_currentPalette is null) return;
+
+        Point pt = e.GetPosition(PreviewImage);
+        int col = (int)(pt.X / PaletteDecoder.DefaultCellSize);
+        int row = (int)(pt.Y / PaletteDecoder.DefaultCellSize);
+
+        if (col is >= 0 and < PaletteDecoder.GridColumns && row is >= 0 and < PaletteDecoder.GridRows)
+        {
+            int index = row * PaletteDecoder.GridColumns + col;
+            IndexedPalette pal = (PaletteModeAssembledRadio.IsChecked == true && _currentPalette.AssembledPalette is not null)
+                ? _currentPalette.AssembledPalette
+                : _currentPalette.Palette;
+
+            int definedLimit = (PaletteModeAssembledRadio.IsChecked == true && _currentPalette.AssembledPalette is not null)
+                ? _currentPalette.AssembledPalette.DefinedCount
+                : _currentPalette.Palette.DefinedCount;
+
+            if (index < definedLimit)
+            {
+                int p = index * 4;
+                byte b = pal.Bgra[p];
+                byte g = pal.Bgra[p + 1];
+                byte r = pal.Bgra[p + 2];
+                string hex = $"#{r:X2}{g:X2}{b:X2}";
+                string source = index < _currentPalette.Palette.DefinedCount ? "Scene block" : "Shared tail (RESOURCE.000)";
+
+                if (_currentPalette.IsVga6Bit)
+                {
+                    int vgaR = r >> 2;
+                    int vgaG = g >> 2;
+                    int vgaB = b >> 2;
+                    ImageInfoText.Text = $"Slot {index} (0x{index:X2}): {hex} | RGB ({r}, {g}, {b}) | VGA 6-bit ({vgaR}, {vgaG}, {vgaB}) — {source}";
+                }
+                else
+                {
+                    ImageInfoText.Text = $"Slot {index} (0x{index:X2}): {hex} | RGB ({r}, {g}, {b}) — {source}";
+                }
+            }
+            else
+            {
+                ImageInfoText.Text = $"Slot {index} (0x{index:X2}): (undefined in this block)";
+            }
+        }
+    }
+
+    private void PreviewImage_PointerExited(object? sender, PointerEventArgs e)
+    {
+        if (_currentPalette is null) return;
+        bool showAssembled = PaletteModeAssembledRadio.IsChecked == true && _currentPalette.AssembledImage is not null;
+        int count = showAssembled && _currentPalette.AssembledPalette is not null
+            ? _currentPalette.AssembledPalette.DefinedCount
+            : _currentPalette.Palette.DefinedCount;
+        int byteCount = _currentPalette.IsVga6Bit ? count * 3 : count * 2;
+        string kindLabel = showAssembled
+            ? $"Assembled 256-colour palette ({_currentPalette.Palette.DefinedCount} scene + {count - _currentPalette.Palette.DefinedCount} shared tail)"
+            : $"Palette block: {count} colours ({byteCount:N0} bytes, {(_currentPalette.IsVga6Bit ? "6-bit VGA" : "RGB565")})";
+        ImageInfoText.Text = $"{kindLabel}. 16×16 swatch grid. Hover a swatch for slot details, click to copy hex.";
+    }
+
+    private async void PreviewImage_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_currentPalette is null) return;
+
+        var prop = e.GetCurrentPoint(PreviewImage).Properties;
+        if (!prop.IsLeftButtonPressed) return;
+
+        Point pt = e.GetPosition(PreviewImage);
+        int col = (int)(pt.X / PaletteDecoder.DefaultCellSize);
+        int row = (int)(pt.Y / PaletteDecoder.DefaultCellSize);
+
+        if (col is >= 0 and < PaletteDecoder.GridColumns && row is >= 0 and < PaletteDecoder.GridRows)
+        {
+            int index = row * PaletteDecoder.GridColumns + col;
+            IndexedPalette pal = (PaletteModeAssembledRadio.IsChecked == true && _currentPalette.AssembledPalette is not null)
+                ? _currentPalette.AssembledPalette
+                : _currentPalette.Palette;
+
+            int definedLimit = (PaletteModeAssembledRadio.IsChecked == true && _currentPalette.AssembledPalette is not null)
+                ? _currentPalette.AssembledPalette.DefinedCount
+                : _currentPalette.Palette.DefinedCount;
+
+            if (index < definedLimit)
+            {
+                int p = index * 4;
+                byte b = pal.Bgra[p];
+                byte g = pal.Bgra[p + 1];
+                byte r = pal.Bgra[p + 2];
+                string hex = $"#{r:X2}{g:X2}{b:X2}";
+                await Dialogs.SetClipboardTextAsync(this, hex);
+                SetStatus($"Copied colour {hex} (slot {index}) to clipboard.");
+            }
+        }
+    }
+
     private void ShowImage(ImageResource image)
     {
         PreviewImage.Source = BitmapConverter.ToBitmap(image.Image);
@@ -2851,7 +3073,7 @@ public partial class MainWindow : Window
         finally { _syncingScrub = false; }
 
         // An animation whose frames are unrelated pictures defaults to Grid mode.
-        bool isAtlas = _selectedNode?.Image?.IsAtlas ?? SpriteAtlasDetector.LooksLikeAtlas(anim.Asset);
+        bool isAtlas = (_selectedNode?.Kind == EntryKind.Folder) || anim.Asset is YesterdayImagePackage || (_selectedNode?.Image?.IsAtlas ?? SpriteAtlasDetector.LooksLikeAtlas(anim.Asset));
         _animIsGridMode = isAtlas;
         _syncingAnimMode = true;
         try
@@ -2978,7 +3200,9 @@ public partial class MainWindow : Window
 
         int cols = (int)Math.Ceiling(Math.Sqrt(_animAsset.FrameCount));
         int rows = (int)Math.Ceiling((double)_animAsset.FrameCount / cols);
-        AnimInfoText.Text = $"sprite atlas grid, {_animAsset.FrameCount} frames ({cols}×{rows} cells of {_animAsset.Bounds.Width}×{_animAsset.Bounds.Height}), sheet {_animGridImage.Width}×{_animGridImage.Height}";
+        string itemLabel = _animAsset is YesterdayImagePackage || _selectedNode?.Kind == EntryKind.Folder ? "sprites" : "frames";
+        string modeLabel = _animAsset is YesterdayImagePackage || _selectedNode?.Kind == EntryKind.Folder ? "sprite package grid" : "sprite atlas grid";
+        AnimInfoText.Text = $"{modeLabel}, {_animAsset.FrameCount} {itemLabel} ({cols}×{rows} cells of {_animAsset.Bounds.Width}×{_animAsset.Bounds.Height}), sheet {_animGridImage.Width}×{_animGridImage.Height}";
 
         if (_animZoom.FitToWindow)
             _animZoom.Fit();

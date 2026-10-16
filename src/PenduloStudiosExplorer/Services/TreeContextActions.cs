@@ -1,4 +1,4 @@
-﻿using PenduloStudiosExplorer.Core.FileSystem;
+using PenduloStudiosExplorer.Core.FileSystem;
 
 namespace PenduloStudiosExplorer.Services;
 
@@ -78,12 +78,12 @@ public readonly record struct PreviewContextActions(
         bool onDisk = node is not null && (node.NodeType & FsNodeType.InArchive) == 0 && !string.IsNullOrEmpty(node.ArchivePath);
 
         return new PreviewContextActions(
-            Zoom: content is ImageResource or AnimationResource or SceneResource or RouteResource,
-            CopyText: content is TextResource or RouteResource,
-            CopyImage: content is ImageResource or AnimationResource or SceneResource or RouteResource,
+            Zoom: content is ImageResource or AnimationResource or SceneResource or RouteResource or PaletteResource,
+            CopyText: content is TextResource or RouteResource or PaletteResource,
+            CopyImage: content is ImageResource or AnimationResource or SceneResource or RouteResource or PaletteResource,
             OpenExternally: content is VideoResource,
             // A scene view is the archive's background; exporting it means the background PNG.
-            Export: content is not ErrorResource && (isFile || content is SceneResource),
+            Export: content is not ErrorResource && (isFile || content is SceneResource || content is AnimationResource),
             ExportRaw: isFile && content is not ErrorResource,
             CopyPath: node is not null,
             RevealInExplorer: onDisk);

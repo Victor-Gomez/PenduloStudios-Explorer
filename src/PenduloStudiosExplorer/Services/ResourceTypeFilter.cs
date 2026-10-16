@@ -40,6 +40,29 @@ public sealed record ResourceTypeFilter(
         return false;
     }
 
+    /// <summary>
+    /// Identifies whether an <see cref="FsNode"/> is a 6-bit VGA or RGB565 palette block.
+    /// </summary>
+    public static bool IsPalette(FsNode node)
+    {
+        if (node.GameVersion == GameVersion.HollywoodMonsters)
+        {
+            return node.Kind is EntryKind.Data or EntryKind.GlobalData
+                && node.Size is >= IndexedPalette.MinBlockBytes and <= IndexedPalette.FullBlockBytes
+                && node.Size % IndexedPalette.BytesPerColor == 0;
+        }
+
+        if (node.GameVersion == GameVersion.Runaway1)
+        {
+            return node.Kind == EntryKind.GlobalData
+                && node.Size == IndexedPalette.Rgb565BlockBytes
+                && node.ArchivePath is not null
+                && Path.GetFileName(node.ArchivePath).Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
     public static readonly IReadOnlyList<ResourceTypeFilter> Categories =
     [
         All,

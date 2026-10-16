@@ -1,4 +1,4 @@
-﻿# Palettes (*Hollywood Monsters*, *Runaway 1*)
+# Palettes (*Hollywood Monsters*, *Runaway 1*)
 
 *Hollywood Monsters* is palette-indexed throughout: every background, overlay and sprite frame stores one
 byte per pixel, and that byte is an index into a 256-entry colour table assembled from two blocks, one in
@@ -130,13 +130,27 @@ out = (v << 2) | (v >> 4)
   the fire in the opening montage (colours 144–159, one step every 300 ms). None of that is stored in the
   archives — it is code — so a still frame is the only faithful thing a browser can show.
 
+## Palette inspection and visualization
+
+The explorer renders palette blocks as an interactive 16×16 swatch grid ($512 \times 512$ px at 32 px/cell) in the viewer:
+
+- **Block vs. Assembled (256)**: When a scene archive ships a partial block (e.g. 176 or 208 colours), the toolbar allows toggling between viewing only the authored block or the full 256-colour table assembled with the shared tail from `RESOURCE.000`.
+- **Divider accent**: A golden border separates the scene-specific block from the shared character tail at slot 176 or 208.
+- **Undefined slots**: Slots beyond the defined block are rendered with a dark checkerboard pattern.
+- **Interactive hover**: Moving the pointer over any swatch displays live status information: slot index (decimal and hex), hex code (`#RRGGBB`), 8-bit RGB `(R, G, B)`, 6-bit VGA triples `(vR, vG, vB)`, and source attribution (*Scene block* vs. *Shared tail*).
+- **Click-to-copy**: Clicking any swatch copies its `#RRGGBB` hex code to the clipboard.
+- **Raw / Hex toggle**: The viewer's toolbar allows flipping between the visual swatch grid and the full textual breakdown with hex dumps and RGB/VGA values.
+- **Export**: Palette blocks export as PNG (`{name}_palette.png`) in single-item and batch exports.
+
 ## Decoders & tests
 
 - [`IndexedPalette`](../../src/PenduloStudiosExplorer.Core/Formats/IndexedPalette.cs) — parsing, the 6-bit
   expansion, and `WithTail` for the shared block.
+- [`PaletteDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/PaletteDecoder.cs) — swatch grid rendering
+  (`RenderGrid`), checkerboard patterns for undefined slots, boundary dividers, and formatted text summary generation (`FormatSummary`).
 - [`VirtualFileSystem.ScenePaletteFor`](../../src/PenduloStudiosExplorer.Core/FileSystem/VirtualFileSystem.cs) —
   resolves and caches one table per scene archive.
-- Tests: [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs)
+- Tests: [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs) and [`ExportAndLoaderTests`](../../tests/PenduloStudiosExplorer.Tests/ExportAndLoaderTests.cs)
 
 ---
 

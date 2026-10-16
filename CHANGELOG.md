@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.7.0] - 2026-10-16
+
+### Added
+- **Yesterday Embedded Image Packages Support (`YesterdayImagePackage`)**: Added detection, hierarchical VFS unpacking, and decoding for cutscene and comic panel image package archives in *Yesterday* (e.g. `RESOURCE.A02\e05`, `RESOURCE.A03\e06`).
+- **Interactive Image Package Atlas Grid View**: Selecting an unpacked package directory in the explorer tree renders all child sprites in a uniform atlas grid with zoom, pan, clipboard copy, and sprite sheet / sequence export, while expanding the folder in the tree allows selecting and viewing each individual sprite.
+- **Palette Swatch Grid Inspection & Rendering (`PaletteDecoder`)**: Interactive 16×16 swatch grid visualization ($512 \times 512$ px) for *Hollywood Monsters* scene palette blocks and *Runaway 1* character palettes. Includes block vs. assembled 256-colour mode toggle with the shared character tail, golden border divider, live hover details (slot index, `#RRGGBB`, 8-bit RGB, 6-bit VGA), click-to-copy hex codes, and PNG export (`{name}_palette.png`).
+
 ## [6.6.0] - 2026-10-16
 
 ### Added

@@ -241,18 +241,29 @@ public sealed class VirtualFileSystem
                 continue;
             Attach(scenes, node);
             summary.SceneArchives++;
-            foreach (FsNode child in node.Children)
+            static void AccumulateSceneEntries(FsNode parent, ScanSummary sum)
             {
-                switch (child.Kind)
+                foreach (FsNode child in parent.Children)
                 {
-                    case EntryKind.Background: summary.Backgrounds++; break;
-                    case EntryKind.Mask: summary.Masks++; break;
-                    case EntryKind.Overlay: summary.Overlays++; break;
-                    case EntryKind.Animation: summary.Animations++; break;
-                    case EntryKind.CharacterAnimation: summary.CharacterAnimations++; break;
-                    default: summary.DataEntries++; break;
+                    if (child.Kind == EntryKind.Folder && child.Children.Count > 0)
+                    {
+                        AccumulateSceneEntries(child, sum);
+                    }
+                    else
+                    {
+                        switch (child.Kind)
+                        {
+                            case EntryKind.Background: sum.Backgrounds++; break;
+                            case EntryKind.Mask: sum.Masks++; break;
+                            case EntryKind.Overlay: sum.Overlays++; break;
+                            case EntryKind.Animation: sum.Animations++; break;
+                            case EntryKind.CharacterAnimation: sum.CharacterAnimations++; break;
+                            default: sum.DataEntries++; break;
+                        }
+                    }
                 }
             }
+            AccumulateSceneEntries(node, summary);
         }
         cache.Save();
         summary.FromCache = anyFromCache;
@@ -523,7 +534,7 @@ public sealed class VirtualFileSystem
             else if (node.Parent.Name == GlobalFolder)
                 node.FriendlyName = SceneCatalog.GetGlobalTitle(node.Name, language, GameVersion);
         }
-        else if (node.IsFile && node.Parent?.Parent?.Name == ScenesFolder)
+        else if (IsInsideScenes(node))
         {
             node.FriendlyName = SceneCatalog.FormatSceneEntryLabel(node, language, GameVersion);
         }
@@ -551,6 +562,16 @@ public sealed class VirtualFileSystem
 
         foreach (FsNode child in node.Children)
             UpdateLanguageRecursive(child, language);
+    }
+
+    private static bool IsInsideScenes(FsNode node)
+    {
+        for (FsNode? p = node.Parent; p is not null; p = p.Parent)
+        {
+            if (p.Name == ScenesFolder)
+                return true;
+        }
+        return false;
     }
 
     internal static (FsNode Node, bool FromCache) BuildSceneArchive(string path, ScanCache cache, string language, GameVersion gameVersion, CancellationToken cancellationToken = default)
@@ -672,22 +693,53 @@ public sealed class VirtualFileSystem
                     var buffer = new byte[entry.Size];
                     f.Position = entry.Offset;
                     f.ReadExactly(buffer);
-                    EntryClassification c;
-                    try
+
+                    if (YesterdayImagePackage.Detect(buffer) is { } pkg)
                     {
-                        c = EntryClassifier.Classify(buffer, sceneWidth, sceneHeight, gameVersion);
+                        var folderCached = new ScanCache.CachedEntry
+                        {
+                            Index = entry.Index,
+                            Offset = entry.Offset,
+                            Size = entry.Size,
+                            Kind = EntryKind.Folder,
+                            Children = new List<ScanCache.CachedEntry>(pkg.Entries.Count),
+                        };
+                        for (int subIdx = 0; subIdx < pkg.Entries.Count; subIdx++)
+                        {
+                            var sub = pkg.Entries[subIdx];
+                            folderCached.Children.Add(new ScanCache.CachedEntry
+                            {
+                                Index = subIdx,
+                                Offset = entry.Offset + sub.Offset,
+                                Size = sub.Size,
+                                Kind = EntryKind.Overlay,
+                                Width = sub.Width,
+                                Height = sub.Height,
+                                X = 0,
+                                Y = 0,
+                            });
+                        }
+                        cached.Add(folderCached);
                     }
-                    catch (Exception)
+                    else
                     {
-                        // A malformed entry must not take the whole archive down; it is simply "data".
-                        c = EntryClassification.DataEntry;
+                        EntryClassification c;
+                        try
+                        {
+                            c = EntryClassifier.Classify(buffer, sceneWidth, sceneHeight, gameVersion);
+                        }
+                        catch (Exception)
+                        {
+                            // A malformed entry must not take the whole archive down; it is simply "data".
+                            c = EntryClassification.DataEntry;
+                        }
+                        if (c.Kind == EntryKind.Background && sceneWidth is null && c.Image is not null)
+                        {
+                            sceneWidth = c.Image.Width;
+                            sceneHeight = c.Image.Height;
+                        }
+                        cached.Add(ScanCache.CachedEntry.From(entry, c));
                     }
-                    if (c.Kind == EntryKind.Background && sceneWidth is null && c.Image is not null)
-                    {
-                        sceneWidth = c.Image.Width;
-                        sceneHeight = c.Image.Height;
-                    }
-                    cached.Add(ScanCache.CachedEntry.From(entry, c));
                 }
             }
             cache.Put(path, cached);
@@ -695,20 +747,57 @@ public sealed class VirtualFileSystem
 
         foreach (ScanCache.CachedEntry e in cached)
         {
-            var child = new FsNode
+            if (e.Children is { Count: > 0 } subEntries)
             {
-                NodeType = FsNodeType.File | FsNodeType.InArchive,
-                Kind = e.Kind,
-                Name = $"e{e.Index:00}",
-                Offset = e.Offset,
-                Size = e.Size,
-                EntryIndex = e.Index,
-                ArchivePath = path,
-                Image = e.ToImageInfo(),
-                GameVersion = gameVersion,
-            };
-            child.FriendlyName = SceneCatalog.FormatSceneEntryLabel(child, language, gameVersion);
-            Attach(node, child);
+                var folderChild = new FsNode
+                {
+                    NodeType = FsNodeType.Directory | FsNodeType.InArchive,
+                    Kind = EntryKind.Folder,
+                    Name = $"e{e.Index:00}",
+                    Offset = e.Offset,
+                    Size = e.Size,
+                    EntryIndex = e.Index,
+                    ArchivePath = path,
+                    GameVersion = gameVersion,
+                };
+
+                foreach (ScanCache.CachedEntry sub in subEntries)
+                {
+                    var subNode = new FsNode
+                    {
+                        NodeType = FsNodeType.File | FsNodeType.InArchive,
+                        Kind = sub.Kind,
+                        Name = $"e{sub.Index:00}",
+                        Offset = sub.Offset,
+                        Size = sub.Size,
+                        EntryIndex = sub.Index,
+                        ArchivePath = path,
+                        Image = sub.ToImageInfo(),
+                        GameVersion = gameVersion,
+                    };
+                    subNode.FriendlyName = SceneCatalog.FormatSceneEntryLabel(subNode, language, gameVersion);
+                    Attach(folderChild, subNode);
+                }
+                folderChild.FriendlyName = SceneCatalog.FormatSceneEntryLabel(folderChild, language, gameVersion);
+                Attach(node, folderChild);
+            }
+            else
+            {
+                var child = new FsNode
+                {
+                    NodeType = FsNodeType.File | FsNodeType.InArchive,
+                    Kind = e.Kind,
+                    Name = $"e{e.Index:00}",
+                    Offset = e.Offset,
+                    Size = e.Size,
+                    EntryIndex = e.Index,
+                    ArchivePath = path,
+                    Image = e.ToImageInfo(),
+                    GameVersion = gameVersion,
+                };
+                child.FriendlyName = SceneCatalog.FormatSceneEntryLabel(child, language, gameVersion);
+                Attach(node, child);
+            }
         }
 
         return (node, fromCache);
@@ -2228,7 +2317,7 @@ public sealed class VirtualFileSystem
     public Stream OpenFile(FsNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        if (!node.IsFile || string.IsNullOrEmpty(node.ArchivePath))
+        if ((!node.IsFile && ((node.NodeType & FsNodeType.InArchive) == 0 || node.Size == 0)) || string.IsNullOrEmpty(node.ArchivePath))
             throw new InvalidOperationException($"'{node.GetPath()}' has no bytes to open.");
 
         var stream = new FileStream(node.ArchivePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
@@ -2252,7 +2341,9 @@ public sealed class VirtualFileSystem
     /// </summary>
     public DecodedImage? SceneBackgroundFor(FsNode node)
     {
-        FsNode? archive = node.IsDirectory && node.Parent?.Name == ScenesFolder ? node : node.Parent;
+        FsNode? archive = node;
+        while (archive is not null && archive.Parent?.Name != ScenesFolder)
+            archive = archive.Parent;
         if (archive is null || archive.Parent?.Name != ScenesFolder || archive.ArchivePath is null)
             return null;
 
@@ -2470,7 +2561,9 @@ public sealed class VirtualFileSystem
     /// </summary>
     public byte[]? SceneAttributeTableFor(FsNode node)
     {
-        FsNode? archive = node.IsDirectory && node.Parent?.Name == ScenesFolder ? node : node.Parent;
+        FsNode? archive = node;
+        while (archive is not null && archive.Parent?.Name != ScenesFolder)
+            archive = archive.Parent;
         if (archive is null || archive.Parent?.Name != ScenesFolder || archive.ArchivePath is null)
             return null;
 

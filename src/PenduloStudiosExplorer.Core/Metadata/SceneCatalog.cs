@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using PenduloStudiosExplorer.Core.FileSystem;
@@ -756,6 +756,15 @@ public static class SceneCatalog
                 return string.IsNullOrEmpty(entry.Subtitle)
                     ? $"{desc} ({entry.Name})"
                     : $"{desc} ({entry.Name})  \"{entry.Subtitle}\"";
+            }
+
+            case EntryKind.Folder:
+            {
+                int count = entry.Children.Count;
+                string countWord = es
+                    ? (count == 1 ? "imagen" : "imágenes")
+                    : (count == 1 ? "image" : "images");
+                return $"{entry.Name}  {count} {countWord}";
             }
 
             default:

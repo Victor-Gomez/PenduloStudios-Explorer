@@ -85,6 +85,12 @@ public static class EntryClassifier
             return new EntryClassification(dds.IsMask ? EntryKind.Mask : EntryKind.Overlay, dds);
         }
 
+        // Embedded image package check (used in Yesterday cutscenes and comic panels)
+        if (YesterdayImagePackage.Detect(data) is not null)
+        {
+            return new EntryClassification(EntryKind.Folder, null);
+        }
+
         if (SpriteAsset.Parse(data) is { } sprite)
         {
             if (sprite.FrameCount == 1)

@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 using PenduloStudiosExplorer.Core.Metadata;
@@ -189,6 +189,136 @@ public class YesterdayTests
         var classification = EntryClassifier.Classify(e4Bytes, 1920, 1080, GameVersion.Yesterday);
         Assert.Equal(EntryKind.Mask, classification.Kind);
         Assert.True(classification.Image!.IsMask);
+    }
+
+    [Fact]
+    public void Yesterday_ResourceA02_Entry05_DecodesAsImagePackage()
+    {
+        if (!Directory.Exists(YesterdaySteamDir)) return;
+        string resA02 = Path.Combine(YesterdaySteamDir, "Resource", "RESOURCE.A02");
+        if (!File.Exists(resA02)) return;
+
+        using var stream = File.OpenRead(resA02);
+        byte[] tableHeader = new byte[65536];
+        int tableRead = stream.Read(tableHeader, 0, tableHeader.Length);
+        var entries = SceneArchive.ReadEntries(tableHeader.AsSpan(0, tableRead), stream.Length);
+        Assert.True(entries.Count > 5);
+
+        var e5 = entries[5];
+        byte[] e5Bytes = new byte[e5.Size];
+        stream.Seek(e5.Offset, SeekOrigin.Begin);
+        stream.ReadExactly(e5Bytes, 0, e5Bytes.Length);
+
+        var pkg = YesterdayImagePackage.Detect(e5Bytes);
+        Assert.NotNull(pkg);
+        Assert.Equal(19, pkg.FrameCount);
+        Assert.Equal(584, pkg.Bounds.Width);
+        Assert.Equal(1044, pkg.Bounds.Height);
+
+        // Frame 0 is 500x360 JPEG
+        var f0 = pkg.DecodeFrame(0);
+        Assert.NotNull(f0.Image);
+        Assert.Equal(500, f0.Image.Width);
+        Assert.Equal(360, f0.Image.Height);
+
+        // Frame 14 is 584x1044 JPEG
+        var f14 = pkg.DecodeFrame(14);
+        Assert.NotNull(f14.Image);
+        Assert.Equal(584, f14.Image.Width);
+        Assert.Equal(1044, f14.Image.Height);
+
+        var classification = EntryClassifier.Classify(e5Bytes, 1920, 1080, GameVersion.Yesterday);
+        Assert.Equal(EntryKind.Folder, classification.Kind);
+        Assert.Null(classification.Image);
+
+        // Test VFS unpacking and language switching
+        var (sceneNode, _) = VirtualFileSystem.BuildSceneArchive(resA02, ScanCache.Ephemeral(), "en", GameVersion.Yesterday);
+        var e05 = sceneNode.Children.Single(c => c.Name == "e05");
+        Assert.True(e05.IsDirectory);
+        Assert.Equal(EntryKind.Folder, e05.Kind);
+        Assert.Equal("e05  19 images", e05.FriendlyName);
+        Assert.Equal(19, e05.Children.Count);
+
+        var e00 = e05.Children[0];
+        Assert.Equal("e00", e00.Name);
+        Assert.Equal(EntryKind.Overlay, e00.Kind);
+        Assert.Equal(500, e00.Image!.Width);
+        Assert.Equal(360, e00.Image!.Height);
+        Assert.Equal("sprite 500×360 (e00)", e00.FriendlyName);
+
+        var e14 = e05.Children[14];
+        Assert.Equal("e14", e14.Name);
+        Assert.Equal(EntryKind.Overlay, e14.Kind);
+        Assert.Equal(584, e14.Image!.Width);
+        Assert.Equal(1044, e14.Image!.Height);
+        Assert.Equal("sprite 584×1044 (e14)", e14.FriendlyName);
+    }
+
+    [Fact]
+    public void SyntheticYesterdayImagePackage_DetectsAndDecodesFrames()
+    {
+        byte[] fakePng = PngWriter.ToBytes(DecodedImage.Transparent(10, 20));
+        byte[] fakeJpeg = SyntheticAssets.TinyJpeg; // 2x2
+        byte[] packageBytes = SyntheticAssets.ImagePackage([fakePng, fakeJpeg]);
+
+        var pkg = YesterdayImagePackage.Detect(packageBytes);
+        Assert.NotNull(pkg);
+        Assert.Equal(2, pkg.FrameCount);
+        Assert.Equal(10, pkg.Bounds.Width);
+        Assert.Equal(20, pkg.Bounds.Height);
+
+        var f0 = pkg.DecodeFrame(0);
+        Assert.NotNull(f0.Image);
+        Assert.Equal(10, f0.Image.Width);
+        Assert.Equal(20, f0.Image.Height);
+
+        var f1 = pkg.DecodeFrame(1);
+        Assert.NotNull(f1.Image);
+        Assert.Equal(2, f1.Image.Width);
+        Assert.Equal(2, f1.Image.Height);
+
+        var classification = EntryClassifier.Classify(packageBytes, 1920, 1080, GameVersion.Yesterday);
+        Assert.Equal(EntryKind.Folder, classification.Kind);
+        Assert.Null(classification.Image);
+
+        // Test synthetic VFS unpacking and cache roundtrip
+        using var install = new FakeInstall();
+        string resPath = Path.Combine(install.Root, "Resource", "RESOURCE.A02");
+        byte[] fakeBg = PngWriter.ToBytes(DecodedImage.Transparent(1920, 1080));
+        byte[] archiveBytes = SyntheticArchives.Scene([fakeBg, packageBytes]);
+        File.WriteAllBytes(resPath, archiveBytes);
+
+        var cache = ScanCache.Ephemeral();
+        var (vfsNodeCold, fromCacheCold) = VirtualFileSystem.BuildSceneArchive(resPath, cache, "en", GameVersion.Yesterday);
+        Assert.False(fromCacheCold);
+        Assert.Equal(2, vfsNodeCold.Children.Count);
+
+        var e01Cold = vfsNodeCold.Children[1];
+        Assert.True(e01Cold.IsDirectory);
+        Assert.Equal("e01  2 images", e01Cold.FriendlyName);
+        Assert.Equal(2, e01Cold.Children.Count);
+        Assert.Equal(10, e01Cold.Children[0].Image!.Width);
+        Assert.Equal(20, e01Cold.Children[0].Image!.Height);
+        Assert.Equal(2, e01Cold.Children[1].Image!.Width);
+        Assert.Equal(2, e01Cold.Children[1].Image!.Height);
+
+        // From cache
+        var (vfsNodeCached, fromCache) = VirtualFileSystem.BuildSceneArchive(resPath, cache, "es", GameVersion.Yesterday);
+        Assert.True(fromCache);
+        var e01Cached = vfsNodeCached.Children[1];
+        Assert.True(e01Cached.IsDirectory);
+        Assert.Equal("e01  2 imágenes", e01Cached.FriendlyName);
+        Assert.Equal(2, e01Cached.Children.Count);
+        Assert.Equal("capa 10×20 (e00)", e01Cached.Children[0].FriendlyName);
+        Assert.Equal("capa 2×2 (e01)", e01Cached.Children[1].FriendlyName);
+
+        // Test that reading bytes from the parent folder works and yields the package
+        var vfs = VirtualFileSystem.Init(install.Root);
+        byte[] folderBytes = vfs.ReadBytes(e01Cold);
+        Assert.Equal(packageBytes.Length, folderBytes.Length);
+        var pkgFromFolder = YesterdayImagePackage.Detect(folderBytes);
+        Assert.NotNull(pkgFromFolder);
+        Assert.Equal(2, pkgFromFolder.FrameCount);
     }
 
     [Fact]

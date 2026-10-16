@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 using PenduloStudiosExplorer.Core.Metadata;
@@ -119,6 +119,76 @@ public class HollywoodMonstersTests
         Assert.Equal(IndexedPalette.Colors, merged.DefinedCount);
         Assert.Equal(scene.Bgra[..(176 * 4)].ToArray(), merged.Bgra[..(176 * 4)].ToArray());
         Assert.Equal(shared.Bgra[..(80 * 4)].ToArray(), merged.Bgra[(176 * 4)..].ToArray());
+    }
+
+    [Fact]
+    public void PaletteDecoder_RendersSwatchGrid_WithExpectedDimensionsAndColors()
+    {
+        IndexedPalette scene = IndexedPalette.TryParse(Palette(176))!;
+        IndexedPalette shared = IndexedPalette.TryParse(Palette(80, seed: 7))!;
+        IndexedPalette merged = scene.WithTail(shared);
+
+        // Render block only (176 colours)
+        DecodedImage blockImage = PaletteDecoder.RenderGrid(scene, cellSize: 32, definedCount: 176);
+        Assert.Equal(512, blockImage.Width);
+        Assert.Equal(512, blockImage.Height);
+
+        // Slot 0 interior pixel should match scene colour 0
+        int slot0Offset = (1 * 512 + 1) * 4; // px 1, py 1 inside cell (0, 0)
+        Assert.Equal(scene.Bgra[0], blockImage.Pixels[slot0Offset]);
+        Assert.Equal(scene.Bgra[1], blockImage.Pixels[slot0Offset + 1]);
+        Assert.Equal(scene.Bgra[2], blockImage.Pixels[slot0Offset + 2]);
+        Assert.Equal(255, blockImage.Pixels[slot0Offset + 3]);
+
+        // Slot 176 (row 11, col 0) in block only image should be undefined pattern
+        int slot176X = 1;
+        int slot176Y = 11 * 32 + 1;
+        int slot176Offset = (slot176Y * 512 + slot176X) * 4;
+        byte pat = blockImage.Pixels[slot176Offset];
+        Assert.True(pat is 22 or 36);
+
+        // Render assembled (256 colours) with divider at 176
+        DecodedImage assembledImage = PaletteDecoder.RenderGrid(merged, cellSize: 32, definedCount: 256, dividerIndex: 176);
+        Assert.Equal(512, assembledImage.Width);
+        Assert.Equal(512, assembledImage.Height);
+
+        // In assembled image, slot 176 interior pixel should match shared tail colour 0
+        Assert.Equal(shared.Bgra[0], assembledImage.Pixels[slot176Offset]);
+        Assert.Equal(shared.Bgra[1], assembledImage.Pixels[slot176Offset + 1]);
+        Assert.Equal(shared.Bgra[2], assembledImage.Pixels[slot176Offset + 2]);
+
+        // Cell border at divider (0, 11*32) should have the golden accent border
+        int dividerBorderOffset = (11 * 32 * 512 + 0) * 4;
+        Assert.Equal(40, assembledImage.Pixels[dividerBorderOffset]);      // B
+        Assert.Equal(195, assembledImage.Pixels[dividerBorderOffset + 1]);  // G
+        Assert.Equal(255, assembledImage.Pixels[dividerBorderOffset + 2]);  // R
+    }
+
+    [Fact]
+    public void PaletteDecoder_FormatsHumanReadableSummary_WithVgaTriples()
+    {
+        IndexedPalette scene = IndexedPalette.TryParse(Palette(176))!;
+        IndexedPalette shared = IndexedPalette.TryParse(Palette(80, seed: 7))!;
+        IndexedPalette merged = scene.WithTail(shared);
+
+        var root = new FsNode();
+        var archive = new FsNode { Name = "RESOURCE.B06", Parent = root };
+        var node = new FsNode
+        {
+            Name = "e01",
+            Size = 528,
+            Kind = EntryKind.Data,
+            Parent = archive,
+        };
+
+        string summary = PaletteDecoder.FormatSummary(scene, merged, node, isVga6Bit: true, rawBytes: Palette(176));
+        Assert.Contains(@"=== Palette Block: \RESOURCE.B06\e01 ===", summary);
+        Assert.Contains("Format: 6-bit VGA triples (0..63)", summary);
+        Assert.Contains("Defined Colours: 176 (528 bytes)", summary);
+        Assert.Contains("Assembled Palette: 256 colours", summary);
+        Assert.Contains("Scene block", summary);
+        Assert.Contains("Shared tail (RESOURCE.000)", summary);
+        Assert.Contains("Raw Hex Dump:", summary);
     }
 
     // --- Images ---

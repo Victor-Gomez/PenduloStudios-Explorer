@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using PenduloStudiosExplorer.Core.FileSystem;
 using Xunit;
 
@@ -79,12 +79,21 @@ internal static class ShippedCacheBuilder
     /// Scans <paramref name="installDir"/> and merges what the scan cached into the shipped file.
     /// Returns the number of archives added; 0 means the install was already covered.
     /// </summary>
-    public static int AddInstall(string installDir)
+    public static int AddInstall(string installDir, bool forceRescan = false)
     {
         lock (Gate)
         {
             Dictionary<string, List<ScanCache.CachedEntry>> shipped = Read();
             int before = shipped.Count;
+
+            if (forceRescan)
+            {
+                foreach (string file in Directory.EnumerateFiles(installDir, "*", SearchOption.AllDirectories))
+                {
+                    string h = ScanCache.ComputeHash(file);
+                    shipped.Remove(h);
+                }
+            }
 
             // Hand the scan what is already known, as an ordinary cache, so it only classifies archives
             // the file has never seen. Loading it from a temp file keeps this to the public API.
@@ -109,11 +118,8 @@ internal static class ShippedCacheBuilder
                     File.Delete(seed);
             }
 
-            if (shipped.Count != before)
-            {
-                File.WriteAllText(JsonPath, JsonSerializer.Serialize(
-                    new ScanCache.ShippedDocument { Hashes = shipped }, Options));
-            }
+            File.WriteAllText(JsonPath, JsonSerializer.Serialize(
+                new ScanCache.ShippedDocument { Hashes = shipped }, Options));
 
             return shipped.Count - before;
         }

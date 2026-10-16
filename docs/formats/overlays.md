@@ -91,9 +91,14 @@ Many foreground scenery elements and static props are stored using the engine's 
 
 In *The Next BIG Thing*, foreground walk-behind elements (such as stair railings, hedges, and architectural columns) are not duplicated as color overlays. Instead, they are stored as full-canvas 8-bit Alpha DirectDraw Surface (`.DDS`) textures (`D3DFMT_A8`). When 3D actors walk behind foreground elements painted into the JPEG background, the engine uses these DDS alpha mattes for hardware-accelerated occlusion. See [masks.md](masks.md) §5 and [`DdsDecoder.cs`](../../src/PenduloStudiosExplorer.Core/Formats/DdsDecoder.cs).
 
+### 5. Embedded comic panels and image package sprites (*Yesterday*)
+
+In *Yesterday*, certain scene archive entries (e.g. `RESOURCE.A02\e05`, `RESOURCE.A03\e06`) contain embedded archives packing sequences of JPEG and PNG illustrations or comic panels. Rather than leaving them opaque blobs or treating them as single animations, the explorer hierarchically unpacks them as folders of individual `Overlay` sprites, allowing both 1:1 sprite examination and atlas grid browsing. See [archives.md](archives.md) §8.
+
 ## Decoders
 
 - [`OverlayDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/OverlayDecoder.cs)
 - [`SpriteDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/SpriteDecoder.cs)
 - [`PngDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/PngDecoder.cs)
+- [`YesterdayImagePackage`](../../src/PenduloStudiosExplorer.Core/Formats/YesterdayImagePackage.cs)
 - Tests: [`ImageDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs), [`Runaway3Tests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway3Tests.cs)

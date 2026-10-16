@@ -40,6 +40,68 @@ public class ResourceLoaderTests
         }
     }
 
+    [Fact]
+    public void HollywoodMonsters_PaletteBlockLoadsAsPaletteResource()
+    {
+        using var install = new FakeHmInstall();
+        var vfs = VirtualFileSystem.Init(install.Root);
+        var settings = new AppSettings();
+        var temp = new TempFileTracker();
+
+        FsNode a02 = vfs.FindNode(vfs.Root, @"\Scenes\RESOURCE.A02")!;
+        FsNode palNode = a02.Children[1];
+
+        var content = ResourceLoader.Load(palNode, vfs, settings, temp);
+        var palRes = Assert.IsType<PaletteResource>(content);
+        Assert.Equal(176, palRes.Palette.DefinedCount);
+        Assert.NotNull(palRes.AssembledPalette);
+        Assert.Equal(256, palRes.AssembledPalette.DefinedCount);
+        Assert.Equal(512, palRes.Image.Width);
+        Assert.Equal(512, palRes.Image.Height);
+        Assert.NotNull(palRes.AssembledImage);
+        Assert.Equal(512, palRes.AssembledImage.Width);
+        Assert.True(palRes.IsVga6Bit);
+        Assert.Contains("=== Palette Block:", palRes.Summary);
+    }
+
+    [Fact]
+    public void UnpackedPackageFolderLoadsAsAnimationResourceGrid()
+    {
+        using var install = new FakeInstall();
+        string resPath = Path.Combine(install.Root, "Resource", "RESOURCE.A02");
+        byte[] fakePng = PngWriter.ToBytes(DecodedImage.Transparent(10, 20));
+        byte[] fakeJpeg = SyntheticAssets.TinyJpeg; // 2x2
+        byte[] packageBytes = SyntheticAssets.ImagePackage([fakePng, fakeJpeg]);
+        byte[] fakeBg = PngWriter.ToBytes(DecodedImage.Transparent(1920, 1080));
+        byte[] archiveBytes = SyntheticArchives.Scene([fakeBg, packageBytes]);
+        File.WriteAllBytes(resPath, archiveBytes);
+        var vfs = VirtualFileSystem.Init(install.Root);
+        var settings = new AppSettings();
+        var temp = new TempFileTracker();
+
+        var packageFolder = new FsNode
+        {
+            NodeType = FsNodeType.Directory | FsNodeType.InArchive,
+            Kind = EntryKind.Folder,
+            Name = "e01",
+            Offset = 40 * 8 + fakeBg.Length,
+            Size = packageBytes.Length,
+            ArchivePath = resPath,
+            GameVersion = GameVersion.Yesterday,
+        };
+
+        var content = ResourceLoader.Load(packageFolder, vfs, settings, temp);
+        var anim = Assert.IsType<AnimationResource>(content);
+        Assert.Equal(2, anim.Asset.FrameCount);
+        Assert.Equal(10, anim.Asset.Bounds.Width);
+        Assert.Equal(20, anim.Asset.Bounds.Height);
+
+        // Building the sprite sheet grid works
+        var (sheet, manifest) = SpriteSheetWriter.BuildSheet(anim.Asset);
+        Assert.NotNull(sheet);
+        Assert.Equal(2, manifest.Frames.Count);
+    }
+
     /// <summary>
     /// The actor's animations load through the same viewer, but the loader has to fetch their frame
     /// records from a second slot and read a head's with the head rule -- see ActorArchive.
@@ -304,6 +366,22 @@ public class BatchExporterTests
         Assert.True(fctl > 0);
         int delayNum = (png[fctl + 4 + 20] << 8) | png[fctl + 4 + 21];
         Assert.Equal(42, delayNum);
+    }
+
+    [Fact]
+    public void BatchExport_ExportsHollywoodMonstersPaletteAsPng()
+    {
+        using var install = new FakeHmInstall();
+        VirtualFileSystem vfs = VirtualFileSystem.Init(install.Root);
+        FsNode palNode = vfs.FindNode(vfs.Root, @"\Scenes\RESOURCE.A02\e01")!;
+        string outDir = Path.Combine(install.Root, "out");
+
+        BatchExportSummary summary = BatchExporter.ExportSubtree(palNode, vfs, outDir, new BatchExportOptions(15, 22050));
+        Assert.Equal(1, summary.ExportedCount);
+        Assert.True(File.Exists(Path.Combine(outDir, "e01_palette.png")));
+
+        byte[] pngBytes = File.ReadAllBytes(Path.Combine(outDir, "e01_palette.png"));
+        Assert.True(PngDecoder.IsPng(pngBytes));
     }
 
     [Fact]

@@ -87,6 +87,9 @@
     <x:String x:Key="Option_RoutesSingle">single</x:String>
     <x:String x:Key="Option_RoutesWalkMask">walk mask</x:String>
     <x:String x:Key="Option_RoutesRaw">raw / hex</x:String>
+    <x:String x:Key="Label_Palette">palette</x:String>
+    <x:String x:Key="Option_PaletteBlock">block</x:String>
+    <x:String x:Key="Option_PaletteAssembled">assembled (256)</x:String>
     <x:String x:Key="Toolbar_Export">Export decoded</x:String>
     <x:String x:Key="Toolbar_ExportRaw">Export raw</x:String>
 

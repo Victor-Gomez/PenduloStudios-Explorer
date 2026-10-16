@@ -1,4 +1,4 @@
-﻿<p align="center"><img src="docs/artwork.png" alt="Pendulo Studios Explorer"></p>
+<p align="center"><img src="docs/artwork.png" alt="Pendulo Studios Explorer"></p>
 
 # Pendulo Studios Explorer
 
@@ -32,11 +32,14 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
   Lip-sync, Video, Dialogue, Global Data, and — in *Runaway 1* — Characters. Includes a pre-computed hash-based scan cache covering every scene and global archive of all six
   games, so a first launch on a stock install is near-instant instead of a cold scan of several
   hundred megabytes.
-- **Backgrounds, scene masks and overlays.** Displays full-screen scene backgrounds, positioned overlays
+- **Backgrounds, scene masks, overlays and palettes.** Displays full-screen scene backgrounds, positioned overlays
   (props, foreground layers, title cards, UI), and scene interaction masks (walkboxes, hotspots, depth planes).
   Overlays and scene masks can be drawn directly on their scene's background at authored coordinates, with
-  layer filtering and adjustable opacity. *Runaway 1* savegames (`SAVEGAME/`) can be browsed and inspected,
-  displaying their 204×120 RGB565 thumbnail, slot name, action verb, scene ID, actor coordinates, and inventory items.
+  layer filtering and adjustable opacity. Interactive palette viewer for *Hollywood Monsters*' 6-bit VGA color tables
+  and *Runaway 1*'s character palettes (16×16 swatch grid, block-only vs. 256-color assembled view with the shared
+  `RESOURCE.000` tail, live slot and color hover details, click-to-copy hex code, and PNG export). *Runaway 1*
+  savegames (`SAVEGAME/`) can be browsed and inspected, displaying their 204×120 RGB565 thumbnail, slot name, action
+  verb, scene ID, actor coordinates, and inventory items.
 - **Sprite animations.** Frame-by-frame playback with scrubbing, stepping, looping, and adjustable
   frame rate, either on the animation's own bounding box or composited over the scene background at
   authored coordinates. *Runaway 1*'s characters live in a library of their own, in a different codec
@@ -52,9 +55,9 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
   and spoken lines, each pointing at the voice clip that records it where the script names one, and *Runaway 3*'s
   `RESOURCE.005` chapter interaction database (2,173 records across 7 chapters, deciphered Spanish object names,
   adventure verbs, and visual Mermaid interaction graphs per chapter and scene).
-- **Export & Clipboard.** Single entries or whole folders: PNG for images and scene masks, **animated PNG** or
+- **Export & Clipboard.** Single entries or whole folders: PNG for images, scene masks, and palettes (swatch grids), **animated PNG** or
   numbered **image sequence** (with per-frame screen coordinates) for animations, WAV for audio,
-  restored `.bik` for video, text for lip-sync tracks, and raw bytes for data tables. Copy images and
+  restored `.bik` for video, text for lip-sync tracks, and raw bytes for data tables. Copy images, palettes, and
   animation frames to the clipboard (Ctrl+C).
 - **Quick navigation & localisation.** Full English and Spanish interface with human-friendly chapter
   and scene names for all supported games, resource type filter, name search with quick clear (Esc),
@@ -92,7 +95,7 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
   file system. Engine-agnostic: no UI framework, no native dependencies.
   - `FileSystem/` -- the scene, audio, global, viseme, voice, chapter interaction, and savegame archive readers; the video keyfile;
     `VirtualFileSystem` (the categorised tree) and `ScanCache`.
-  - `Formats/` -- `RasterDecoder`, `JpegDecoder`, `PngDecoder`, `OverlayDecoder`, `SpriteDecoder`, `CharacterSpriteDecoder`, `RleMaskDecoder`, `RouteDecoder`, `SceneTable`, `CorridorSpanDecoder`, `SmackerVideo`, `PngWriter`, `ApngWriter`, `WavWriter`.
+  - `Formats/` -- `RasterDecoder`, `JpegDecoder`, `PngDecoder`, `OverlayDecoder`, `DdsDecoder`, `YesterdayImagePackage`, `SpriteDecoder`, `CharacterSpriteDecoder`, `RleMaskDecoder`, `RouteDecoder`, `SceneTable`, `CorridorSpanDecoder`, `SmackerVideo`, `PngWriter`, `ApngWriter`, `WavWriter`.
   - `Metadata/` -- `SceneCatalog` (official chapter names, scene titles and bilingual descriptions).
   - `Settings/` -- persisted user preferences.
 - `src/PenduloStudiosExplorer/` -- Avalonia UI.

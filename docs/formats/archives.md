@@ -274,6 +274,27 @@ In *Yesterday*, `RESOURCE.X69` (8,547,597 bytes) uses the Runaway 2-style offset
 
 In *Runaway 3*, `RESOURCE.005` (478,152 bytes) stores the game's chapter trigger and interaction database across 7 chapters (2,173 220-byte records). Each record contains an adventure interaction definition with Spanish object identifiers (`URNA`, `GUANTE`, `RADIAL`, etc.) enciphered via a chapter-local XOR-chain formula. See [global-data.md](global-data.md) §8 for record layout, the XOR decryption algorithm, verb mappings, and the Mermaid interaction graph format.
 
+### 8. Yesterday embedded image package archives (`YesterdayImagePackage`)
+
+In *Yesterday*, comic panels and cutscene multi-image collections embedded within scene archives (such as `RESOURCE.A02\e05` and `RESOURCE.A03\e06`) are stored as secondary archives using the Runaway 2-style offset-size table header:
+
+```text
+Header (8 bytes):
+    u32 TableHalfSize       -- count * 4 (table half-size in bytes)
+    u32 TableEndOffset      -- 4 + TableHalfSize * 2 (offset of first image)
+
+Table:
+    u32 EntryOffsets[count] -- offsets of each image relative to the package start
+    u32 EntrySizes[count]   -- sizes of each image in bytes
+
+Payload:
+    <count back-to-back JPEG (0xFFD8) and/or PNG (0x89504E47) image files>
+```
+
+- **Hierarchical VFS Unpacking**: `VirtualFileSystem.BuildSceneArchive` detects these packages via `YesterdayImagePackage.Detect` and unpacks them into virtual directory nodes containing child `EntryKind.Overlay` nodes (`e00`, `e01`...) with absolute archive offsets and individual image dimensions.
+- **Atlas Grid Preview**: Selecting the parent directory in the explorer tree loads the package as an `IAnimationAsset` and displays all images packed into a uniform grid via `SpriteSheetWriter.BuildSheet`, supporting pan, zoom, clipboard copy, and sprite-sheet/sequence export.
+- **Individual Sprite View**: Expanding the directory in the tree exposes each child image for individual 1:1 preview, transparent checkerboard framing, and single-file PNG export.
+
 ## Known unknowns
 
 - The meaning of the 2-byte trailer flags in the video keyfile filename records.
@@ -281,6 +302,7 @@ In *Runaway 3*, `RESOURCE.005` (478,152 bytes) stores the game's chapter trigger
 ## Decoders
 
 - [`SceneArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
+- [`YesterdayImagePackage`](../../src/PenduloStudiosExplorer.Core/Formats/YesterdayImagePackage.cs)
 - [`AudioArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
 - [`VoiceArchive`](../../src/PenduloStudiosExplorer.Core/FileSystem/Archives.cs)
 - [`VideoKeyfile`](../../src/PenduloStudiosExplorer.Core/FileSystem/VideoKeyfile.cs)

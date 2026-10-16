@@ -110,6 +110,9 @@ public static class BatchExporter
                 : $"{Path.GetFileNameWithoutExtension(node.Name)}_{Path.GetExtension(node.Name).TrimStart('.')}.bik",
             EntryKind.Viseme or EntryKind.Dialogue or EntryKind.SceneTable => $"{node.Name}.txt",
             EntryKind.Savegame => $"{node.Name}.png",
+            _ when (node.GameVersion == GameVersion.HollywoodMonsters)
+                   && node.Size is >= IndexedPalette.MinBlockBytes and <= IndexedPalette.FullBlockBytes
+                   && node.Size % IndexedPalette.BytesPerColor == 0 => $"{node.Name}_palette.png",
             _ when node.ArchivePath is not null
                    && ActorArchive.IsActorArchive(Path.GetFileName(node.ArchivePath), node.GameVersion ?? GameVersion.Runaway1)
                    && ActorArchive.FromDataSlot(node.EntryIndex) is not null => $"{node.Name}.png",
@@ -214,6 +217,24 @@ public static class BatchExporter
                     PngWriter.Write(ddsImg, path);
                     return BatchExportResult.Exported;
                 }
+                if (PngDecoder.IsPng(data))
+                {
+                    if (PngDecoder.Decode(data) is { } pngImg)
+                    {
+                        PngWriter.Write(pngImg, path);
+                        return BatchExportResult.Exported;
+                    }
+                    return BatchExportResult.Failed;
+                }
+                if (JpegDecoder.IsJpeg(data))
+                {
+                    if (JpegDecoder.Decode(data) is { } jpgImg)
+                    {
+                        PngWriter.Write(jpgImg, path);
+                        return BatchExportResult.Exported;
+                    }
+                    return BatchExportResult.Failed;
+                }
                 if (SpriteAsset.Parse(data, bytesPerPixel) is { } sprite1)
                 {
                     sprite1.Palette = vfs.ScenePaletteFor(file);
@@ -229,8 +250,12 @@ public static class BatchExporter
 
             case EntryKind.Animation:
             {
-                SpriteAsset asset = SpriteAsset.Parse(vfs.ReadBytes(file), bytesPerPixel) ?? throw new InvalidDataException("not a sprite");
-                asset.Palette = vfs.ScenePaletteFor(file);
+                byte[] data = vfs.ReadBytes(file);
+                IAnimationAsset asset = (IAnimationAsset?)YesterdayImagePackage.Detect(data)
+                    ?? (IAnimationAsset?)SpriteAsset.Parse(data, bytesPerPixel)
+                    ?? throw new InvalidDataException("not a sprite animation or image package");
+                if (asset is SpriteAsset sa)
+                    sa.Palette = vfs.ScenePaletteFor(file);
                 ExportAnimation(asset, path, options.AnimationFps, options.AnimationFrames);
                 return BatchExportResult.Exported;
             }
@@ -367,6 +392,22 @@ public static class BatchExporter
             }
 
             default:
+                if (indexed && file.Size is >= IndexedPalette.MinBlockBytes and <= IndexedPalette.FullBlockBytes && file.Size % IndexedPalette.BytesPerColor == 0)
+                {
+                    byte[] data = vfs.ReadBytes(file);
+                    if (IndexedPalette.TryParse(data) is { } pal)
+                    {
+                        IndexedPalette? assembled = vfs.ScenePaletteFor(file);
+                        if (assembled is null && pal.DefinedCount < IndexedPalette.Colors)
+                        {
+                            if (vfs.SharedPalette(IndexedPalette.Colors - pal.DefinedCount) is { } tail)
+                                assembled = pal.WithTail(tail);
+                        }
+                        DecodedImage img = PaletteDecoder.RenderGrid(assembled ?? pal, definedCount: (assembled ?? pal).DefinedCount);
+                        PngWriter.Write(img, path);
+                        return BatchExportResult.Exported;
+                    }
+                }
                 if (file.ArchivePath is not null
                     && ActorArchive.IsActorArchive(Path.GetFileName(file.ArchivePath), vfs.GameVersion)
                     && ActorArchive.FromDataSlot(file.EntryIndex) is { } actorAnim)

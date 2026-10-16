@@ -1,4 +1,4 @@
-﻿using PenduloStudiosExplorer.Core.FileSystem;
+using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 
 namespace PenduloStudiosExplorer.Services;
@@ -44,6 +44,18 @@ public sealed record RouteResource(
     FsNode Node,
     DecodedImage? WalkMask = null,
     IReadOnlyDictionary<int, (int X, int Y)>? Centroids = null) : ResourceContent;
+
+/// <summary>
+/// A 256-colour (or partial) colour palette displayed as an interactive swatch grid.
+/// </summary>
+public sealed record PaletteResource(
+    IndexedPalette Palette,
+    IndexedPalette? AssembledPalette,
+    DecodedImage Image,
+    DecodedImage? AssembledImage,
+    string Summary,
+    FsNode Node,
+    bool IsVga6Bit = true) : ResourceContent;
 
 /// <summary>Loading the resource failed; <see cref="Message"/> is shown to the user in the text panel.</summary>
 public sealed record ErrorResource(string Message) : ResourceContent;

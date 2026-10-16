@@ -63,6 +63,26 @@ public static class ResourceLoader
                     return new TextResource(ChapterInteractionArchive.FormatSummary(db));
                 }
             }
+
+            if (node.ArchivePath is not null && (node.NodeType & FsNodeType.InArchive) != 0 && node.Size > 0)
+            {
+                byte[] data = vfs.ReadBytes(node);
+                if (YesterdayImagePackage.Detect(data) is { } pkg)
+                    return new AnimationResource(pkg);
+            }
+
+            if (node.Children.Count > 0 && node.Children.All(c => c.Kind == EntryKind.Overlay))
+            {
+                return new AnimationResource(new FolderAnimationAsset(node.Children, vfs, settings, tempFiles));
+            }
+
+            var folderSb = new StringBuilder();
+            folderSb.AppendLine($"Folder: {node.DisplayName}");
+            folderSb.AppendLine($"Path: {node.GetPath()}");
+            folderSb.AppendLine($"Items: {node.Children.Count}");
+            if (node.Size > 0)
+                folderSb.AppendLine($"Size: {VirtualFileSystem.FormatSize(node.Size)}");
+            return new TextResource(folderSb.ToString());
         }
 
         try
@@ -191,7 +211,8 @@ public static class ResourceLoader
                             bool hasBg = vfs.SceneBackgroundFor(node) is not null;
                             int x = node.Image?.X ?? 0;
                             int y = node.Image?.Y ?? 0;
-                            bool positioned = hasBg || x != 0 || y != 0;
+                            bool isChildOfFolder = node.Parent?.Kind == EntryKind.Folder;
+                            bool positioned = !isChildOfFolder && (hasBg || x != 0 || y != 0);
                             string kind = positioned ? "overlay" : "sprite";
                             return new ImageResource(pngImg, x, y, positioned, kind);
                         }
@@ -200,7 +221,15 @@ public static class ResourceLoader
                     if (JpegDecoder.IsJpeg(data))
                     {
                         if (JpegDecoder.Decode(data) is { } jpgImg)
-                            return new ImageResource(jpgImg, node.Image?.X ?? 0, node.Image?.Y ?? 0, true, "overlay");
+                        {
+                            bool hasBg = vfs.SceneBackgroundFor(node) is not null;
+                            int x = node.Image?.X ?? 0;
+                            int y = node.Image?.Y ?? 0;
+                            bool isChildOfFolder = node.Parent?.Kind == EntryKind.Folder;
+                            bool positioned = !isChildOfFolder && (hasBg || x != 0 || y != 0);
+                            string kind = positioned ? "overlay" : "sprite";
+                            return new ImageResource(jpgImg, x, y, positioned, kind);
+                        }
                         return new ErrorResource($"'{node.GetPath()}' failed to decode as JPEG.");
                     }
                     if (SpriteAsset.Parse(data, bytesPerPixel) is { } sprite1)
@@ -219,6 +248,10 @@ public static class ResourceLoader
                 case EntryKind.Animation:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (YesterdayImagePackage.Detect(data) is { } pkg)
+                    {
+                        return new AnimationResource(pkg);
+                    }
                     if (vfs.GameVersion == GameVersion.HollywoodMonsters && data.Length == HollywoodItemIconsAsset.TotalBytes)
                     {
                         var icons = new HollywoodItemIconsAsset(data);
@@ -527,6 +560,66 @@ public static class ResourceLoader
                         }
                     }
 
+                    if (indexed && IsPaletteSized(node.Size))
+                    {
+                        byte[] paletteData = vfs.ReadBytes(node);
+                        if (IndexedPalette.TryParse(paletteData) is { } rawPal)
+                        {
+                            IndexedPalette? assembled = vfs.ScenePaletteFor(node);
+                            if (assembled is null && rawPal.DefinedCount < IndexedPalette.Colors)
+                            {
+                                if (vfs.SharedPalette(IndexedPalette.Colors - rawPal.DefinedCount) is { } tail)
+                                    assembled = rawPal.WithTail(tail);
+                            }
+
+                            DecodedImage blockImage = PaletteDecoder.RenderGrid(rawPal, definedCount: rawPal.DefinedCount);
+                            DecodedImage? assembledImage = assembled is not null && assembled.DefinedCount > rawPal.DefinedCount
+                                ? PaletteDecoder.RenderGrid(assembled, dividerIndex: rawPal.DefinedCount)
+                                : null;
+
+                            string summary = PaletteDecoder.FormatSummary(
+                                rawPal,
+                                assembled,
+                                node,
+                                isVga6Bit: true,
+                                rawBytes: paletteData);
+
+                            return new PaletteResource(
+                                rawPal,
+                                assembled,
+                                blockImage,
+                                assembledImage,
+                                summary,
+                                node,
+                                IsVga6Bit: true);
+                        }
+                    }
+
+                    if (vfs.GameVersion == GameVersion.Runaway1 && node.Size == IndexedPalette.Rgb565BlockBytes
+                        && node.ArchivePath is not null && Path.GetFileName(node.ArchivePath).Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase))
+                    {
+                        byte[] paletteData = vfs.ReadBytes(node);
+                        if (IndexedPalette.TryParseRgb565(paletteData) is { } r1Pal)
+                        {
+                            DecodedImage blockImage = PaletteDecoder.RenderGrid(r1Pal, definedCount: r1Pal.DefinedCount);
+                            string summary = PaletteDecoder.FormatSummary(
+                                r1Pal,
+                                assembled: null,
+                                node,
+                                isVga6Bit: false,
+                                rawBytes: paletteData);
+
+                            return new PaletteResource(
+                                r1Pal,
+                                AssembledPalette: null,
+                                blockImage,
+                                AssembledImage: null,
+                                summary,
+                                node,
+                                IsVga6Bit: false);
+                        }
+                    }
+
                     using Stream s = vfs.OpenFile(node);
                     int take = (int)Math.Min(s.Length, RawFormat.MaxDumpBytes);
                     var head = new byte[take];
@@ -687,5 +780,46 @@ public static class ResourceLoader
             return null;
 
         return vfs.ReadBytes(tableNode);
+    }
+
+    private sealed class FolderAnimationAsset : IAnimationAsset
+    {
+        private readonly IReadOnlyList<FsNode> _children;
+        private readonly VirtualFileSystem _vfs;
+        private readonly AppSettings _settings;
+        private readonly TempFileTracker _tempFiles;
+        private readonly (int X, int Y, int Width, int Height) _bounds;
+
+        public FolderAnimationAsset(IReadOnlyList<FsNode> children, VirtualFileSystem vfs, AppSettings settings, TempFileTracker tempFiles)
+        {
+            _children = children;
+            _vfs = vfs;
+            _settings = settings;
+            _tempFiles = tempFiles;
+            int maxW = 0, maxH = 0;
+            foreach (var c in children)
+            {
+                if (c.Image is { } img)
+                {
+                    if (img.Width > maxW) maxW = img.Width;
+                    if (img.Height > maxH) maxH = img.Height;
+                }
+            }
+            _bounds = (0, 0, Math.Max(1, maxW), Math.Max(1, maxH));
+        }
+
+        public int FrameCount => _children.Count;
+        public (int X, int Y, int Width, int Height) Bounds => _bounds;
+
+        public SpriteFrame DecodeFrame(int index)
+        {
+            if (index < 0 || index >= _children.Count)
+                throw new ArgumentOutOfRangeException(nameof(index));
+            if (Load(_children[index], _vfs, _settings, _tempFiles) is ImageResource img)
+                return new SpriteFrame(img.Image, 0, 0);
+            return new SpriteFrame(null, 0, 0);
+        }
+
+        public string? Verify() => null;
     }
 }
