@@ -1,4 +1,4 @@
-﻿using PenduloStudiosExplorer.Core.FileSystem;
+using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 
 namespace PenduloStudiosExplorer.Services;
@@ -95,6 +95,14 @@ public sealed record ResourceTypeFilter(
             return CustomPredicate(node);
         if (Kinds is null)
             return true;
+        if (Array.IndexOf(Kinds, EntryKind.ActorAnimation) >= 0
+            && node.Kind == EntryKind.GlobalData
+            && node.ArchivePath is not null
+            && ActorArchive.IsActorArchive(System.IO.Path.GetFileName(node.ArchivePath), node.GameVersion ?? GameVersion.Runaway1)
+            && ActorArchive.FromDataSlot(node.EntryIndex) is not null)
+        {
+            return true;
+        }
         return Array.IndexOf(Kinds, node.Kind) >= 0;
     }
 

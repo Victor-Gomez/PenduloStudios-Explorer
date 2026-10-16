@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using PenduloStudiosExplorer.Core.Formats;
 
 namespace PenduloStudiosExplorer.Core.FileSystem;
@@ -77,6 +77,12 @@ public static class EntryClassifier
                 Width = jw,
                 Height = jh,
             });
+        }
+
+        // DirectDraw Surface (DDS) check (used in The Next BIG Thing)
+        if (DdsDecoder.Detect(data) is { } dds)
+        {
+            return new EntryClassification(dds.IsMask ? EntryKind.Mask : EntryKind.Overlay, dds);
         }
 
         if (SpriteAsset.Parse(data) is { } sprite)

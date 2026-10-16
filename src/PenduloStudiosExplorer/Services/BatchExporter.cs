@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 
@@ -110,6 +110,9 @@ public static class BatchExporter
                 : $"{Path.GetFileNameWithoutExtension(node.Name)}_{Path.GetExtension(node.Name).TrimStart('.')}.bik",
             EntryKind.Viseme or EntryKind.Dialogue or EntryKind.SceneTable => $"{node.Name}.txt",
             EntryKind.Savegame => $"{node.Name}.png",
+            _ when node.ArchivePath is not null
+                   && ActorArchive.IsActorArchive(Path.GetFileName(node.ArchivePath), node.GameVersion ?? GameVersion.Runaway1)
+                   && ActorArchive.FromDataSlot(node.EntryIndex) is not null => $"{node.Name}.png",
             _ => $"{node.Name}.bin",
         };
     }
@@ -178,11 +181,19 @@ public static class BatchExporter
                     }
                 }
                 DecodedImage image;
-                if (SparseMaskDecoder.Detect(data, sceneW, sceneH) is { } sm)
+                if (DdsDecoder.IsDds(data))
+                {
+                    image = DdsDecoder.Decode(data, colorSeed: file.EntryIndex);
+                }
+                else if (SparseMaskDecoder.Detect(data, sceneW, sceneH) is { } sm)
                 {
                     int w = sceneW ?? sm.Width;
                     int h = sceneH ?? sm.Height;
                     image = SparseMaskDecoder.Decode(data, w, h, colorSeed: file.EntryIndex);
+                }
+                else if (SpanMaskDecoder.IsSpanMask(data))
+                {
+                    image = SpanMaskDecoder.Decode(data);
                 }
                 else
                 {
@@ -197,6 +208,12 @@ public static class BatchExporter
             case EntryKind.Overlay:
             {
                 byte[] data = vfs.ReadBytes(file);
+                if (DdsDecoder.IsDds(data))
+                {
+                    var ddsImg = DdsDecoder.Decode(data, colorSeed: file.EntryIndex);
+                    PngWriter.Write(ddsImg, path);
+                    return BatchExportResult.Exported;
+                }
                 if (SpriteAsset.Parse(data, bytesPerPixel) is { } sprite1)
                 {
                     sprite1.Palette = vfs.ScenePaletteFor(file);
@@ -350,6 +367,19 @@ public static class BatchExporter
             }
 
             default:
+                if (file.ArchivePath is not null
+                    && ActorArchive.IsActorArchive(Path.GetFileName(file.ArchivePath), vfs.GameVersion)
+                    && ActorArchive.FromDataSlot(file.EntryIndex) is { } actorAnim)
+                {
+                    byte[]? table = ActorArchive.ReadFrameTable(file.ArchivePath, actorAnim);
+                    if (table is null) return BatchExportResult.Failed;
+                    CharacterSpriteAsset? asset = CharacterSpriteAsset.Parse(
+                        table, actorAnim.FrameCount, vfs.ReadBytes(file), actorAnim.Geometry, 1);
+                    if (asset is null) return BatchExportResult.Failed;
+                    asset.Palette = vfs.CharacterPaletteFor(file);
+                    ExportAnimation(asset, path, options.AnimationFps, options.AnimationFrames);
+                    return BatchExportResult.Exported;
+                }
                 return BatchExportResult.SkippedUnsupported;
         }
     }

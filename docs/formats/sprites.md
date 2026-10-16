@@ -1,4 +1,4 @@
-﻿# Animated sprites
+# Animated sprites
 
 Animated characters, ambient animations (torches, water ripples, flags), and interactive objects are stored as segment-encoded multi-frame sprite assets.
 
@@ -180,18 +180,22 @@ u16 Count
 Pixel data:
     Flag 0: u16 RGB565[Count]                (2 BPP)
     Flag 1: { u16 RGB565, u8 Alpha }[Count]  (3 BPP)
+    Flag 5: { u8 B, u8 G, u8 R, u8 A }[Count] (4 BPP, 32-bit BGRA straight alpha)
     Flag 6: { u8 B, u8 G, u8 R }[Count]      (3 BPP, 24-bit BGR truecolor)
     Flag 7: { u8 B, u8 G, u8 R, u8 A }[Count] (4 BPP, 32-bit RGBA)
 ```
 
-#### Alpha blending (Flag 7)
+#### Alpha blending (Flag 5 and Flag 7)
 
-Segments using Flag 7 are blended onto the target frame using standard straight alpha blending:
+Segments using Flag 5 or Flag 7 are blended onto the target frame using standard straight alpha blending:
 
 ```text
 outA = srcA + dstA * (1 - srcA)
 outC = (srcC * srcA + dstC * dstA * (1 - srcA)) / outA
 ```
+
+Flag 5 is used exclusively in *Runaway 3*'s cemetery scene (`RESOURCE.A01` entries 8, 9, and 10) for foreground
+grave and dirt mound overlays, sharing the identical 32-bit BGRA straight alpha layout as Flag 7.
 
 ## Frame timing
 

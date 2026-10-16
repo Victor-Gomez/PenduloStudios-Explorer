@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using System.Text;
 using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
@@ -1019,6 +1019,36 @@ public static class SyntheticAssets
                 recIndex++;
                 r++;
             }
+        }
+
+        return data;
+    }
+
+    /// <summary>Creates a synthetic 8-bit alpha DirectDraw Surface (DDS) texture (D3DFMT_A8) matching The Next BIG Thing.</summary>
+    public static byte[] DdsAlpha(int width, int height, byte[]? alphaPayload = null)
+    {
+        var data = new byte[128 + width * height];
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0, 4), 0x20534444); // "DDS "
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(4, 4), 124);        // dwSize
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(8, 4), 0x00081007); // dwFlags
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(12, 4), (uint)height);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(16, 4), (uint)width);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(20, 4), (uint)(width * height));
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(76, 4), 32);         // ddspf.dwSize
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(80, 4), 0x00000002); // ddspf.dwFlags (DDPF_ALPHA)
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(88, 4), 8);          // ddspf.dwRGBBitCount
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(104, 4), 0x000000FF);// ddspf.dwABitMask
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(108, 4), 0x00001000);// dwCaps (DDSCAPS_TEXTURE)
+
+        if (alphaPayload is not null)
+        {
+            Array.Copy(alphaPayload, 0, data, 128, Math.Min(alphaPayload.Length, width * height));
+        }
+        else
+        {
+            for (int y = height / 4; y < 3 * height / 4; y++)
+                for (int x = width / 4; x < 3 * width / 4; x++)
+                    data[128 + y * width + x] = 200;
         }
 
         return data;

@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Avalonia;
@@ -142,6 +142,14 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
 
             if (ResourceTypeFilter.IsNavigationMesh(Node))
                 return GetVectorIcon("ModelTypeIcon");
+
+            if (Node.Kind == EntryKind.GlobalData
+                && Node.ArchivePath is not null
+                && ActorArchive.IsActorArchive(System.IO.Path.GetFileName(Node.ArchivePath), Node.GameVersion ?? GameVersion.Runaway1)
+                && ActorArchive.FromDataSlot(Node.EntryIndex) is not null)
+            {
+                return GetVectorIcon("AnimationTypeIcon");
+            }
 
             return GetVectorIcon(KindIcons.TryGetValue(Node.Kind, out string? key) ? key : "RawFileTypeIcon");
         }

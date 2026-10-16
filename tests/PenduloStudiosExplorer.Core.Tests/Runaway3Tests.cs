@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 using PenduloStudiosExplorer.Core.Metadata;
@@ -73,10 +73,11 @@ public class Runaway3Tests
     /// - Frame 0: Flag 0 (RGB565, 2 bpp) and Flag 1 (RGB565 + 8-bit alpha, 3 bpp)
     /// - Frame 1: Flag 6 (BGR 24-bit opaque, 3 bpp)
     /// - Frame 2: Flag 7 (BGRA 32-bit straight alpha, 4 bpp)
+    /// - Frame 3: Flag 5 (BGRA 32-bit straight alpha, 4 bpp)
     /// </summary>
     public static byte[] SyntheticSpriteR3MultiFrameAllFlags()
     {
-        ushort frameCount = 3;
+        ushort frameCount = 4;
         int headerSize = 2 + frameCount * 14;
 
         Span<byte> u16 = stackalloc byte[2];
@@ -129,6 +130,19 @@ public class Runaway3Tests
         f2Segs.WriteByte(50); f2Segs.WriteByte(60); f2Segs.WriteByte(70); f2Segs.WriteByte(220);
         byte[] f2Data = f2Segs.ToArray();
 
+        // Frame 3 segments (Flag 5):
+        using var f3Segs = new MemoryStream();
+        // Seg 0: x=10, y=8, flag=5, count=2 -> 7 bytes header + 8 bytes (BGRA * 2)
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 10); f3Segs.Write(u16);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 8); f3Segs.Write(u16);
+        f3Segs.WriteByte(5);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 2); f3Segs.Write(u16);
+        // Pixel 0: B=15, G=25, R=35, A=200
+        f3Segs.WriteByte(15); f3Segs.WriteByte(25); f3Segs.WriteByte(35); f3Segs.WriteByte(200);
+        // Pixel 1: B=55, G=65, R=75, A=255
+        f3Segs.WriteByte(55); f3Segs.WriteByte(65); f3Segs.WriteByte(75); f3Segs.WriteByte(255);
+        byte[] f3Data = f3Segs.ToArray();
+
         using var ms = new MemoryStream();
         BinaryPrimitives.WriteUInt16LittleEndian(u16, frameCount); ms.Write(u16);
 
@@ -159,9 +173,19 @@ public class Runaway3Tests
         BinaryPrimitives.WriteUInt16LittleEndian(u16, 7); ms.Write(u16);  // y1
         BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);  // segCount = 1
 
+        // Frame 3 record: fo = fo2 + f2Data.Length
+        uint fo3 = fo2 + (uint)f2Data.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(u32, fo3); ms.Write(u32);
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 10); ms.Write(u16); // x0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 12); ms.Write(u16); // x1 (x0 + w = 10 + 2)
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 8); ms.Write(u16);  // y0
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 8); ms.Write(u16);  // y1
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, 1); ms.Write(u16);  // segCount = 1
+
         ms.Write(f0Data);
         ms.Write(f1Data);
         ms.Write(f2Data);
+        ms.Write(f3Data);
         return ms.ToArray();
     }
 
@@ -401,14 +425,14 @@ public class Runaway3Tests
 
         Assert.NotNull(asset);
         Assert.True(asset.IsRunaway3);
-        Assert.Equal(3, asset.FrameCount);
+        Assert.Equal(4, asset.FrameCount);
         Assert.Null(asset.Verify());
 
-        // Union bounds: X=10, Y=5, Width=6, Height=3
+        // Union bounds: X=10, Y=5, Width=6, Height=4
         Assert.Equal(10, asset.Bounds.X);
         Assert.Equal(5, asset.Bounds.Y);
         Assert.Equal(6, asset.Bounds.Width);
-        Assert.Equal(3, asset.Bounds.Height);
+        Assert.Equal(4, asset.Bounds.Height);
 
         // Frame 0: (Red pixel + Blue with alpha)
         SpriteFrame f0 = asset.DecodeFrame(0);
@@ -460,6 +484,24 @@ public class Runaway3Tests
         Assert.Equal(60, f2.Image.Pixels[5]);
         Assert.Equal(70, f2.Image.Pixels[6]);
         Assert.Equal(220, f2.Image.Pixels[7]);
+
+        // Frame 3: Flag 5 (32-bit BGRA with straight alpha)
+        SpriteFrame f3 = asset.DecodeFrame(3);
+        Assert.NotNull(f3.Image);
+        Assert.Equal(2, f3.Image.Width);
+        Assert.Equal(1, f3.Image.Height);
+        Assert.Equal(10, f3.X);
+        Assert.Equal(8, f3.Y);
+        // Pixel 0 (BGRA: 15, 25, 35, 200)
+        Assert.Equal(15, f3.Image.Pixels[0]);
+        Assert.Equal(25, f3.Image.Pixels[1]);
+        Assert.Equal(35, f3.Image.Pixels[2]);
+        Assert.Equal(200, f3.Image.Pixels[3]);
+        // Pixel 1 (BGRA: 55, 65, 75, 255)
+        Assert.Equal(55, f3.Image.Pixels[4]);
+        Assert.Equal(65, f3.Image.Pixels[5]);
+        Assert.Equal(75, f3.Image.Pixels[6]);
+        Assert.Equal(255, f3.Image.Pixels[7]);
 
         // Export to APNG
         using var apngMs = new MemoryStream();
@@ -1250,6 +1292,66 @@ public class Runaway3InterfaceTests
         };
         string maskLabel = SceneCatalog.FormatSceneEntryLabel(maskNode, "en", GameVersion.Runaway3);
         Assert.Equal("scene mask 1650×720 (e04)", maskLabel);
+    }
+
+    [Fact]
+    public void RealInstall_Runaway3_ResourceA01_e08_e09_e10_AreOverlays()
+    {
+        string path = Path.Combine(Runaway3Tests.R3SteamDir, "Resource", "RESOURCE.A01");
+        if (!File.Exists(path)) return;
+        using var fs = File.OpenRead(path);
+        var entries = SceneArchive.ReadEntries(fs);
+
+        foreach (int idx in new[] { 8, 9, 10 })
+        {
+            var e = entries.Single(x => x.Index == idx);
+            byte[] data = new byte[e.Size];
+            fs.Position = e.Offset;
+            fs.ReadExactly(data);
+
+            var sprite = SpriteAsset.Parse(data);
+            Assert.NotNull(sprite);
+            Assert.True(sprite.IsRunaway3);
+            Assert.Equal(1, sprite.FrameCount);
+            Assert.Null(sprite.Verify());
+
+            var frame = sprite.DecodeFrame(0);
+            Assert.NotNull(frame.Image);
+            Assert.True(frame.Image.Width > 0);
+            Assert.True(frame.Image.Height > 0);
+
+            var classification = EntryClassifier.Classify(data, 1280, 720, GameVersion.Runaway3);
+            Assert.Equal(EntryKind.Overlay, classification.Kind);
+            Assert.NotNull(classification.Image);
+            Assert.Equal(1, classification.Image.Frames);
+            Assert.Equal(sprite.Bounds.Width, classification.Image.Width);
+            Assert.Equal(sprite.Bounds.Height, classification.Image.Height);
+            Assert.Equal(sprite.Bounds.X, classification.Image.X);
+            Assert.Equal(sprite.Bounds.Y, classification.Image.Y);
+        }
+
+        var vfs = VirtualFileSystem.Init(Runaway3Tests.R3SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode a01 = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.A01")!;
+        foreach (int idx in new[] { 8, 9, 10 })
+        {
+            FsNode node = a01.Children.Single(c => c.Name == $"e{idx:D2}");
+            Assert.Equal(EntryKind.Overlay, node.Kind);
+            Assert.NotNull(node.Image);
+            Assert.Equal(1, node.Image.Frames);
+            Assert.True(node.Image.Width > 0);
+            Assert.True(node.Image.Height > 0);
+        }
+
+        var defaultCache = ScanCache.Load();
+        var cachedA01 = defaultCache.TryGet(Path.Combine(Runaway3Tests.R3SteamDir, "Resource", "RESOURCE.A01"));
+        Assert.NotNull(cachedA01);
+        foreach (int idx in new[] { 8, 9, 10 })
+        {
+            var ce = cachedA01.Single(e => e.Index == idx);
+            Assert.Equal(EntryKind.Overlay, ce.Kind);
+            Assert.True(ce.Width > 0);
+            Assert.True(ce.Height > 0);
+        }
     }
 }
 

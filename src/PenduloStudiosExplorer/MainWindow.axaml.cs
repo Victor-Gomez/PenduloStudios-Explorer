@@ -2215,7 +2215,12 @@ public partial class MainWindow : Window
             foreach (var occNode in occluderNodes)
             {
                 byte[] occData = _vfs.ReadBytes(occNode);
-                if (SparseMaskDecoder.Detect(occData, sceneW, sceneH) is { } sm)
+                if (DdsDecoder.IsDds(occData))
+                {
+                    var occImg = DdsDecoder.Decode(occData, colorSeed: occNode.EntryIndex);
+                    BlendOver(compositePixels, occImg.Pixels);
+                }
+                else if (SparseMaskDecoder.Detect(occData, sceneW, sceneH) is { } sm)
                 {
                     var occImg = SparseMaskDecoder.Decode(occData, sceneW, sceneH, idMap, colorSeed: occNode.EntryIndex);
                     BlendOver(compositePixels, occImg.Pixels);
@@ -2242,6 +2247,7 @@ public partial class MainWindow : Window
             using var s = _vfs.OpenFile(node);
             Span<byte> head = stackalloc byte[16];
             int read = s.Read(head);
+            if (read >= 4 && DdsDecoder.IsDds(head[..read])) return true;
             if (read >= 6 && SpanMaskDecoder.IsSpanMask(head[..read])) return true;
             if (read >= 9 && head[6] is 2 or 4) return true;
         }

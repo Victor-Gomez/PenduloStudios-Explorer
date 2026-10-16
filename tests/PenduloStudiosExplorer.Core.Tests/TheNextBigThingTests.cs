@@ -1,4 +1,4 @@
-﻿using PenduloStudiosExplorer.Core.FileSystem;
+using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 using PenduloStudiosExplorer.Core.Settings;
 using Xunit;
@@ -103,6 +103,65 @@ public class TheNextBigThingTests
         Assert.NotNull(e00);
         Assert.Equal(EntryKind.Background, e00.Kind);
         Assert.Equal(1920, e00.Image?.Width);
+    }
+
+    [Fact]
+    public void DdsDecoder_DetectsAndDecodesSyntheticAlphaDds()
+    {
+        byte[] dds = SyntheticAssets.DdsAlpha(200, 100);
+        Assert.True(DdsDecoder.IsDds(dds));
+
+        var info = DdsDecoder.Detect(dds);
+        Assert.NotNull(info);
+        Assert.Equal(200, info.Width);
+        Assert.Equal(100, info.Height);
+        Assert.True(info.IsMask);
+
+        var cl = EntryClassifier.Classify(dds, sceneWidth: 200, sceneHeight: 100, GameVersion.TheNextBigThing);
+        Assert.Equal(EntryKind.Mask, cl.Kind);
+        Assert.NotNull(cl.Image);
+        Assert.Equal(200, cl.Image.Width);
+        Assert.Equal(100, cl.Image.Height);
+
+        var img = DdsDecoder.Decode(dds, colorSeed: 4);
+        Assert.Equal(200, img.Width);
+        Assert.Equal(100, img.Height);
+
+        // Center pixel should be non-zero alpha
+        int centerIdx = (50 * 200 + 100) * 4;
+        Assert.True(img.Pixels[centerIdx + 3] > 0);
+    }
+
+    [Fact]
+    public void RealInstall_ResourceA02_DdsOccluderMasksClassifyAndDecode()
+    {
+        if (!Directory.Exists(TnbtSteamDir))
+            return;
+
+        var vfs = VirtualFileSystem.Init(TnbtSteamDir, cache: ScanCache.Ephemeral());
+        var a02 = vfs.Root.Children
+            .FirstOrDefault(c => c.Name == VirtualFileSystem.ScenesFolder)?
+            .Children.FirstOrDefault(c => c.Name.Equals("RESOURCE.A02", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(a02);
+
+        // e04, e06, e07 are all 2920x1080 A8 DDS occluder masks
+        int[] ddsIndices = [4, 6, 7];
+        foreach (int idx in ddsIndices)
+        {
+            var node = a02.Children.FirstOrDefault(c => c.EntryIndex == idx);
+            Assert.NotNull(node);
+            Assert.Equal(EntryKind.Mask, node.Kind);
+            Assert.NotNull(node.Image);
+            Assert.Equal(2920, node.Image.Width);
+            Assert.Equal(1080, node.Image.Height);
+            Assert.True(node.Image.IsMask);
+
+            byte[] bytes = vfs.ReadBytes(node);
+            Assert.True(DdsDecoder.IsDds(bytes));
+            var decoded = DdsDecoder.Decode(bytes, colorSeed: node.EntryIndex);
+            Assert.Equal(2920, decoded.Width);
+            Assert.Equal(1080, decoded.Height);
+        }
     }
 }
 

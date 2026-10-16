@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.0] - 2026-10-16
+
+### Added
+- **DDS Alpha Occluder Masks Support (*The Next BIG Thing*)**: Added [`DdsDecoder`](src/PenduloStudiosExplorer.Core/Formats/DdsDecoder.cs) to classify and decode 8-bit Alpha DirectDraw Surface textures (`DDPF_ALPHA`, Direct3D `D3DFMT_A8`) used across 28 scene archives (67 entries, e.g. `RESOURCE.A02` `e04`, `e06`, `e07`) for foreground walk-behind occluders.
+- **Occluder Mask Compositing & Batch Export**: Integrated DDS textures into the scene mask overlay viewer, occluder toggle compositing, and PNG batch exporter.
+
 ## [6.5.1] - 2026-10-15
 
 ### Fixed

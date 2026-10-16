@@ -1,4 +1,4 @@
-﻿# Scene masks and walkboxes
+# Scene masks and walkboxes
 
 Scene masks partition backgrounds into interactive zones, walkboxes (character pathfinding meshes), depth planes (walk-behind occluders), and material/acoustics boundaries.
 
@@ -127,6 +127,10 @@ Runs (RunCount records):
 ### 4. Grayscale PNG masks (*The Next BIG Thing*, *Yesterday*)
 
 In *Yesterday*, several scene archives (such as `RESOURCE.C02\e04`, `RESOURCE.D02\e04-06`) store mask layers as standard 8-bit or 24-bit PNG images. The grayscale luminance value of each pixel corresponds directly to the functional zone identifier.
+
+### 5. DirectDraw Surface (DDS) alpha occluder masks (*The Next BIG Thing*)
+
+In *The Next BIG Thing*, full-scene foreground walk-behind occluders and depth mattes are stored as uncompressed 8-bit Alpha DirectDraw Surface (`.DDS`) textures (`DDPF_ALPHA`, Direct3D `D3DFMT_A8` format, 67 entries across 28 scene archives). Each file carries a 128-byte header (`"DDS "` signature + 124-byte `DDS_HEADER` with `dwFlags = 0x00081007`, `dwRGBBitCount = 8`, `dwABitMask = 0xFF`), followed by $W \times H$ bytes of uncompressed raster alpha values matching the scene canvas dimensions ($1920 \times 1080$, $2020 \times 1080$, $2920 \times 1080$, etc.). The anti-aliased alpha boundary defines the exact silhouette of foreground scenery (e.g. hedges, stair railings, wall corners) for hardware occlusion blending via DirectX 9.
 
 ## Zone attribute table (`1536 bytes`)
 
@@ -314,5 +318,7 @@ Masks can be previewed standalone or composited at 55% opacity over the scene ba
 
 - [`RleMaskDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/RleMaskDecoder.cs)
 - [`SparseMaskDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/SparseMaskDecoder.cs)
+- [`SpanMaskDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/SpanMaskDecoder.cs)
+- [`DdsDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/DdsDecoder.cs)
 - [`PngDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/PngDecoder.cs)
 - Tests: [`RleMaskDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/RleMaskDecoderTests.cs), [`SpanMaskDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/SpanMaskDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs)

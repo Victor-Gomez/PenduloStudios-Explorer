@@ -1,4 +1,4 @@
-﻿# Global and UI data
+# Global and UI data
 
 Shared global assets — fonts, cursor art, interface icons, phrase lookup tables, lip-sync visemes, the
 character sprite library, and *Hollywood Monsters*' shared colours — reside in numbered global resources
@@ -49,6 +49,7 @@ shipped Spanish Steam build.
 
 | Slot | Offset | Size | Purpose | Encoding |
 |---|---|---|---|---|
+| 10–111 | `0x0000FB4`… | ~53.9 MB total | Player character: 6 groups × 17 slots (walk/head tables, palettes, run data; see §2) | Character sprite codec |
 | 112–115 | `0x35EB4EC`… | 976,320 each | Mouse cursor atlas, 904×540 | Raw RGB565 over key `0x6841` |
 | 116, 117 | `0x39A4BEC`, `0x3A789EC` | 867,840 each | Inventory item icons, 904×480 | Raw RGB565, same key |
 | 125 | `0x3D7CF4C` | 50,719 | Regular font glyph bitmap, 181 glyphs | Outline/fill shade, see below |
@@ -62,7 +63,7 @@ shipped Spanish Steam build.
 | 161 | `0x692FCF5` | 15,842 | Small font glyph bitmap, 150 glyphs | Outline/fill shade, see below |
 | 162 | `0x6933AD7` | 750 | Glyph table for slot 161 | 150 × 5-byte records |
 
-The remaining unexplained slots in 10-159, identified 2026-09-30 by rendering them and by their
+The remaining slots in 112–159, identified 2026-09-30 by rendering them and by their
 loaders in `Runaway.exe` (addresses are VAs, image base 0x400000):
 
 | Slot | Size | Purpose | How established |
@@ -407,15 +408,28 @@ margin rather than trusting a recorded answer.
 
 The rest of the cast is in `Resource.001`; the character the player moves is not. He is in
 `RESOURCE.000`, in the same codec but a different layout: **six groups of 17 consecutive slots**, at
-slots 10, 27, 44, 61, 78 and 95, so slots 10-111 are his and nothing else is.
+slots 10, 27, 44, 61, 78 and 95, so slots 10–111 are his and nothing else is. Slot 10 starts at
+`0x0000FB4` immediately following the archive header, and slot 111 ends at `0x35EB4EC` where the cursor
+atlas at slot 112 begins.
+
+| Group `g` | Slots | Chapters | Scenes | Lighting / Palette slot | Run slots (Walk / Head) |
+|---|---|---|---|---|---|
+| Group 0 (`g=10`) | 10–26 | 1–2 | 2xxx–4xxx | Lit from right (`slot 11`) | Walk `12–19`, Head `20–25` (Head table `e026`) |
+| Group 1 (`g=27`) | 27–43 | 1–2 | 2xxx–4xxx | Lit from left (`slot 28`) | Walk `29–36`, Head `37–42` (Head table `e043`) |
+| Group 2 (`g=44`) | 44–60 | 3 | 5xxx | Lit from right (`slot 45`) | Walk `46–53`, Head `54–59` (Head table `e060`) |
+| Group 3 (`g=61`) | 61–77 | 3 | 5xxx | Lit from left (`slot 62`) | Walk `63–70`, Head `71–76` (Head table `e077`) |
+| Group 4 (`g=78`) | 78–94 | 4–6 | 6xxx–9xxx | Lit from right (`slot 79`) | Walk `80–87`, Head `88–93` (Head table `e094`) |
+| Group 5 (`g=95`) | 95–111 | 4–6 | 6xxx–9xxx | Lit from left (`slot 96`) | Walk `97–104`, Head `105–110` (Head table `e111`) |
+
+Within each 17-slot group:
 
 | Slot | Size | Contents |
 |---|---|---|
 | `g` | 4,864 | walk frame table, **8 rows of 19** records (32 bytes each) |
 | `g+1` | 512 | the palette, `u16 colour[256]` RGB565 |
-| `g+2` .. `g+9` | ~790 KB — ~1 MB | walk run data, one slot per facing |
+| `g+2` .. `g+9` | ~790 KB — ~1 MB | walk run data, one slot per facing (0: Back to 7: Up-Right) |
 | `g+10` .. `g+15` | ~366 KB — ~389 KB | head run data, one slot per head |
-| `g+16` | 7,680 | head frame table, **6 rows of 40** records |
+| `g+16` | 7,680 | head frame table, **6 rows of 40** records (e.g. `e026`, `e043`, `e060`, `e077`, `e094`, `e111`) |
 
 The records have the identical layout to `Resource.001`'s, and **a row of a table is one animation whose
 runs are the matching slot**: walk row *d* against slot `g+2+d`, head row *h* against slot `g+10+h`.
@@ -426,6 +440,18 @@ The executable picks a group by the chapter and by a key-light flag the room loa
 they come in pairs: (10, 27), (44, 61) and (78, 95) are the same costume lit from opposite sides, and
 their palettes are byte-identical. Groups 10/27 serve scenes 2xxx-4xxx, 44/61 serve 5xxx and 78/95 serve
 6xxx-9xxx — see [executable.md](executable.md). The palettes are covered in [palettes.md](palettes.md).
+
+##### Run streams and Frame 0 geometry sharing
+
+Like `RESOURCE.001`, each frame is an opaque body stream of `{u16 x, u16 y, u16 count, u8 index[count]}` runs
+followed by coverage runs. Frame 0 of each walk facing represents Brian's idle standing pose for that direction.
+
+Because characters are rarely rendered in pure profile when standing idle in isometric/oblique adventure scenes:
+- **Facing 2 (East / right) and Facing 3 (South-East / down-right)** share identical frame geometry: both use
+  the exact same 32-byte frame descriptor in slot 10 (`143×427 at (91, 402)`) and the **exact same 665 body run headers
+  `(x, y, count)`**, starting at $Y=32$ (the crown of hair). Facing 2 reuses Facing 3's standing pose with adjusted
+  shading (29.4% byte differences in palette indices reflecting directional lighting).
+- **Facing 5 (South-West) and Facing 6 (West)** symmetrically share their idle Frame 0 geometry and run headers.
 
 ##### A head's record describes the body, not the head
 
@@ -481,10 +507,18 @@ overload that takes the records and the runs separately, with a `CharacterSprite
 a record describes its own frame or the body underneath. `ActorArchive` owns the slot arithmetic: an
 animation is named by the slot its runs are in, and its group, table slot, row, frame count, palette and
 geometry all follow from that, so the tree carries the slot alone and the loader recovers the rest. A
-group is taken only when all seventeen of its slots are there at the sizes the layout requires. The 84
-animations are an `Actor` folder beside the library in `Characters`; the raw slots stay in `Global Data`,
-so this adds a reading rather than replacing one, and the scan cache is untouched. `Runaway1ActorTests`
-covers the layout, both geometries and the shipped game, where it walks all 2,352 frames.
+group is taken only when all seventeen of its slots are there at the sizes the layout requires.
+
+The explorer surfaces these animations in two places:
+1. **Under `Characters > Actor`**: 84 named animations grouped into the 6 costume groups with facing names
+   and head indices.
+2. **Under `Global Data > RESOURCE.000`**: selecting any of the 84 raw run slots (`e012`–`e019`, `e020`–`e025`,
+   `e029`–`e036`, etc.) decodes and plays the animation directly with its matching palette and frame table,
+   with playback controls, scrubbing, zoom/pan, and APNG / sprite sheet export.
+
+Because `ResourceLoader` resolves the actor frame table and palette on demand, the underlying nodes keep their
+raw `GlobalData` kind in the virtual filesystem tree, leaving `ScanCache` and shipped cache hashes untouched.
+`Runaway1ActorTests` covers the layout, both geometries and the shipped game, where it walks all 2,352 frames.
 
 ### 3. `RESOURCE.003` — dialogue phrase tables
 

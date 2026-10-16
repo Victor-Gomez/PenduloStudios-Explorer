@@ -1,4 +1,4 @@
-﻿using PenduloStudiosExplorer.Core.FileSystem;
+using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
 using PenduloStudiosExplorer.Core.Settings;
 using PenduloStudiosExplorer.Core.Tests;
@@ -85,6 +85,16 @@ public class ResourceLoaderTests
 
             // And it exports under the tree's own name, like every other animation.
             Assert.Equal("g010-walk0.png", BatchExporter.ExportFileName(walkNode));
+
+            // In Global Data > RESOURCE.000, raw actor animation slots (e.g. e014 = facing 2) also decode as animations directly
+            FsNode global = vfs.FindNode(vfs.Root, "\\Global Data\\RESOURCE.000")!;
+            FsNode e014 = global.Children.Single(c => c.Name == "e014");
+            var rawAnim = Assert.IsType<AnimationResource>(ResourceLoader.Load(e014, vfs, settings, temp));
+            var rawAsset = Assert.IsType<CharacterSpriteAsset>(rawAnim.Asset);
+            Assert.Equal(ActorArchive.WalkFrames, rawAsset.FrameCount);
+            Assert.NotNull(rawAsset.Palette);
+            Assert.Null(rawAsset.Verify());
+            Assert.Equal("e014.png", BatchExporter.ExportFileName(e014));
         }
     }
 

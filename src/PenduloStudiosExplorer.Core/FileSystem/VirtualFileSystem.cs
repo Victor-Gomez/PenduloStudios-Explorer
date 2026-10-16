@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using System.Text;
 using PenduloStudiosExplorer.Core.Formats;
 using PenduloStudiosExplorer.Core.Metadata;
@@ -2378,7 +2378,10 @@ public sealed class VirtualFileSystem
         // The actor's own animations name their palette outright -- it is the second slot of their
         // group -- so nothing has to be inferred for them.
         int slot;
-        if (node.Kind == EntryKind.ActorAnimation)
+        if (node.Kind == EntryKind.ActorAnimation
+            || (node.ArchivePath is not null
+                && ActorArchive.IsActorArchive(Path.GetFileName(node.ArchivePath), GameVersion)
+                && ActorArchive.FromDataSlot(node.EntryIndex) is not null))
         {
             if (ActorArchive.FromDataSlot(node.EntryIndex) is not { } animation)
                 return null;

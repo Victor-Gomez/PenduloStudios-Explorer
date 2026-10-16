@@ -1,4 +1,4 @@
-﻿# Overlays
+# Overlays
 
 Overlays represent non-fullscreen scene artwork: foreground scenery elements, interactive props, doors, inventory icons, and UI dialog elements placed at specific screen coordinates over the scene background.
 
@@ -79,8 +79,21 @@ IEND chunk                      -- Chunk terminator
 
 RGBA PNGs (ColorType 6) contain per-pixel alpha channels allowing smooth antialiased blending over background scenery.
 
+### 3. Single-frame sprite cutouts as overlays (*Runaway 1–3*, *TNBT*, *Yesterday*)
+
+Many foreground scenery elements and static props are stored using the engine's sprite segment stream format ([sprites.md](sprites.md)) with exactly one frame (`FrameCount == 1`).
+
+- `EntryClassifier` identifies them by their byte-exact frame tiling and classifies single-frame assets as `EntryKind.Overlay` rather than `EntryKind.Animation`.
+- In *Runaway 3*, this includes 32-bit straight-alpha cutouts such as the cemetery foreground leaf and grave mounds in `RESOURCE.A01` (`e08`, `e09`, `e10`) using 7-byte segment headers with `Flag = 5` (4 BPP BGRA straight alpha).
+- Like row-record overlays, their bounding box origin `(X, Y)` positions them at absolute screen coordinates over the background.
+
+### 4. Foreground occlusion masks vs. overlays (*The Next BIG Thing*)
+
+In *The Next BIG Thing*, foreground walk-behind elements (such as stair railings, hedges, and architectural columns) are not duplicated as color overlays. Instead, they are stored as full-canvas 8-bit Alpha DirectDraw Surface (`.DDS`) textures (`D3DFMT_A8`). When 3D actors walk behind foreground elements painted into the JPEG background, the engine uses these DDS alpha mattes for hardware-accelerated occlusion. See [masks.md](masks.md) §5 and [`DdsDecoder.cs`](../../src/PenduloStudiosExplorer.Core/Formats/DdsDecoder.cs).
+
 ## Decoders
 
 - [`OverlayDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/OverlayDecoder.cs)
+- [`SpriteDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/SpriteDecoder.cs)
 - [`PngDecoder`](../../src/PenduloStudiosExplorer.Core/Formats/PngDecoder.cs)
-- Tests: [`ImageDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs)
+- Tests: [`ImageDecoderTests`](../../tests/PenduloStudiosExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/PenduloStudiosExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/PenduloStudiosExplorer.Core.Tests/YesterdayTests.cs), [`Runaway3Tests`](../../tests/PenduloStudiosExplorer.Core.Tests/Runaway3Tests.cs)

@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 
 namespace PenduloStudiosExplorer.Core.Formats;
 
@@ -29,7 +29,7 @@ public readonly record struct SpriteRecord(int FrameOffset, int X0, int W, int Y
 /// <summary>One run of pixels: <paramref name="Count"/> values at byte <paramref name="PixelOffset"/>, painted at screen (<paramref name="X"/>, <paramref name="Y"/>).</summary>
 public readonly record struct SpriteSegment(int X, int Y, int Count, int PixelOffset, byte Flag = 0)
 {
-    public bool HasAlpha => Flag is 1 or 7;
+    public bool HasAlpha => Flag is 1 or 5 or 7;
 }
 
 /// <summary>A decoded frame: the image cropped to its content, and where its top-left sits on the screen. <see cref="Image"/> is <see langword="null"/> for an empty frame.</summary>
@@ -41,7 +41,7 @@ public readonly record struct SpriteFrame(DecodedImage? Image, int X, int Y)
 /// <summary>Decoded segment header parameters for any sprite format.</summary>
 internal readonly record struct SpriteSegmentHeader(int X, int Y, int Count, byte Flag, int HeaderBytes, int PixelBytes)
 {
-    public bool HasAlpha => Flag is 1 or 7;
+    public bool HasAlpha => Flag is 1 or 5 or 7;
 }
 
 /// <summary>
@@ -125,6 +125,7 @@ public sealed class SpriteAsset : IAnimationAsset
                 {
                     0 => 2,
                     1 => 3,
+                    5 => 4,
                     6 => 3,
                     7 => 4,
                     _ => 0
@@ -476,7 +477,7 @@ public sealed class SpriteAsset : IAnimationAsset
                     src += 3;
                 }
             }
-            else if (s.Flag == 7)
+            else if (s.Flag is 5 or 7)
             {
                 int src = s.PixelOffset;
                 for (int k = 0; k < s.Count; k++)

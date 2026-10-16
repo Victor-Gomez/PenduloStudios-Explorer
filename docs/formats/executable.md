@@ -252,10 +252,47 @@ Scene 2010's dispatcher case calls `0x43dff0`, then `0x444b00(1)` and `0x40f110`
     opaque to (627, 140) (1024 x 600: (627, 56)) and BltFasts it to the primary. So a picture fades
     in over 20 frames and shows for 108 in all; the last fades out by about frame 2168.
   - Nothing resets these words: they are statics, zero when the exe starts.
-  - `0x43bb30` (also `0x7a1cc0`, the surface restore hook) loads `DATAVB08.000` (3 frames) into
-    `0x92d280`. The overlay does not use it. `0x43b250(0x92d280, b[0xa6708d], 0)`, in the line
-    code around `0x439c40`, BltFasts its frames, presumably over the held stills while a line is
-    said. Not read further.
+  - `0x43bb30` (also `0x7a1cc0`, the surface restore hook) loads `DATAVB08.000` into `0x92d280`.
+    The overlay does not use it: it holds the mouths drawn over the held stills (read 2026-10-15,
+    below).
+
+**The held stills' mouths** (read 2026-10-15). A video function with talking stills has a loader
+that opens `DATAV<room>.000`, a Bink of whole 1024 x 600 frames, and calls
+`0x43ae70(handle, n, rects, firsts, lasts, table)`. `0x43ae70` allocates `n` 6-byte entries
+`{records, u16 count}` behind `table = {entries, u16 n}`. For each, `0x43af10(handle, l, t, r, b,
+first, last, entry)` does `BinkGoto(first)` (1-based) and copies the inclusive rect of each frame up
+to `last` into a surface of its own. Each record is 20 bytes `{surface, l, t, r, b}`.
+`0x43b250(table, anim, frame)` BltFasts record `frame` of entry `anim` to the front buffer
+(`[0x7a1ca4]`) at `(l, t + 84)`, `(l, t)` in game space. Nothing redraws the still under it: the
+mouth stays until the next one or the next video frame.
+
+`DATAVB08.000` has 36 frames, three mouths of 12: `(587, 74, 647, 161)` frames 1..12 is the man in
+the yellow coat at the club door (still 2566), `(258, 318, 313, 373)` 13..24 is Brian kneeling in
+the street (2626), and `(402, 28, 531, 229)` 25..36 is the man's close-up (2655). `0x4407c0` sets
+`b[0xa6708d]` to 0, 1, 2 before each hold. A mouth's frames are the twelve visemes of
+`0x416de0`; 6..11 are the blink bank.
+
+The hold's waiter (the loop after the still's line) picks what is drawn:
+
+- `0x52cd70` loops `0x439bb0`, the video talk step (pace flag `0x890680`, 50 ms). It draws nothing
+  for the first ticks of a line (`b[0x5c12e0] <= 2`). While the track has visemes
+  (`0xa0bb16 != 0xa81b74`) it calls `0x416de0` and draws frame `v` of `b[0xa6708d]` (bank 6, the
+  blink frames, one time in 5). When the track or voice channel `0x679f74` is done, it draws frame 0.
+- `0x518740` and `0x45a0b0` blink once: on each `0x9dade0` tick while the line plays, one chance in 15
+  (`rand() % 0xf`) draws frame 6 once (`esi = 1`), and every tick draws frame 0. B01's line 5 at
+  2655 ("Puede ser...") uses it.
+- `0x448b60` blinks again and again: frame 0 after a 6, then maybe another 6.
+- `0x458920`, `0x458950`, `0x52ac20` and `0x47b020` add a room drawing call to the lip-sync, and
+  `0x52cda0` draws random frames. None of these is lifted yet.
+- `0x4399a0` is not a waiter: it is the skip handler of timed stills.
+
+Every room uses the same table (`xref_const.py 0x92d280`: 88 references, from B01 to I03). Each
+video function's loader fills it when that function starts. The 21
+callers of `0x43ae70` are: B01 (`0x43bb30`), B09 (14 mouths), B01/B02/B07, D01/D05/D07/D08/D10, E06,
+F01/F02, G03/G04, H04/H07/H08/H09 and I02/I03. Some mouths have 6 frames and so no blink bank.
+`codegen.py` reads each loader's arguments (`mouth_loader()`) and each hold's waiter
+(`hold_mouth()`), and emits `VideoStep::kMouth*` plus a `VideoMouth` table for each script that
+has one. Holds whose waiter it does not know are listed in `REPORT.md` under "video mouths".
 
   Then `0x439820(2)` waits 2 steps of the 250 ms counter and `0x43a650` goes on to 2566.
 - **Cue frames.** `0x435f00(frame, 0, n)` is true when `n` equals its counter `0x6babb6`, cue `n` has
@@ -667,8 +704,8 @@ The global scene word `0x6f4258` holds `chapter-ish * 1000 + room * 10 + variant
 - **After a chapter's intro returns, the dispatcher stores the first room itself**, around the
   chapter start call `0x444b00`: 2000 → 2020, 4000 → 4010, 5000 → 5030, 6000 → 6350, 7000 → 7010,
   8000 → 8100. Codegen's `INTRO_NEXT` holds these and ends each intro room with that scene.
-  Scene 1000 (`0x445a80`) is the title menu, where I03's credits end; the engine returns to its
-  menu.
+  Scene 1000 (`0x445a80`) is the chapter screen, where the game starts and I03's credits end;
+  see "The title sequence and the chapter screen" below.
 - **The RESOURCE.003 stage is the loader's, usually `scene / 10`.** The loader seeks
   `[0x8083e0 + stage*4]` (the stage offsets RESOURCE.003's header holds), so scene 2020 is stage 202,
   `RESOURCE.B02`. But each loader computes the index itself, and not all use `scene / 10`:
@@ -694,6 +731,66 @@ The global scene word `0x6f4258` holds `chapter-ish * 1000 + room * 10 + variant
   | 2021 | `0x44ec20` | back from B08 |
   | 2022 | `0x44ed10` | back from the window |
   | 2023 | `0x44ef60` | plays `DATAVB05.001` |
+
+### The title sequence and the chapter screen
+
+Before its loop, the dispatcher calls `0x445180` (at `0x406700`) and then sets scene 1000.
+
+**The title sequence, `0x445180`.** Its loader `0x444f80` reads `RESOURCE.A02` into the 1024x600
+buffer `0x94f4e8`. Entries 0 to 2 are sprites, at `0x68f0a0`..`0x68f0a8`. Entry 3 is an overlay,
+at `0x68f0ac`.
+
+1. **FX's logo, `0x4450f0`.** It draws entry 3 (`0x432fe0`) on black and fades it in over 1 s
+   (`0x401ed0(100)`). It holds the logo 3 s on the 1 s counter `0x900f04`, fades it out (`0x401d70(100)`)
+   and clears to black. The skip flag `0x9d2735` cuts the logo short without the fade out, and is
+   cleared again afterwards.
+2. **The theme.** The main theme starts with `0x4096a0(0, 0, 7, 2, 100, 0, 1, ...)`. That is
+   `RESOURCE.002` entry 2 (12.02 s, 16 kHz stereo s16), once, on channel 7, which no other code
+   uses. The screen is cleared and the next part is drawn straight on.
+3. **Pendulo's logo, `0x444de0`.** Each part's frame starts at -1, kept in `0x5d2c40`, `0x5d2c44`
+   and `0x5d2c48`.
+   - Entry 0, the runner drawn by a spark, steps its 175 frames on the 40 ms flag `0xa65ac4`.
+   - Once it is done, entry 1 (the frame) and then entry 2 (the name) step their 48 frames on the
+     10 ms flag `0x6d93cc`. The loop only sees that flag about every 20 ms.
+   - `0x4333c0(buffer, sprite, count, frame)` draws them. Its third argument is the frame count,
+     not a position; each frame carries its own.
+4. **The end.** Two seconds on the finished logo, then `0x401d70(100)` and black. It waits for
+   channel 7's state byte `0x67a02e` (`0x679e7c + 7 * 62`) to drop to 0, then `0x4099f0(7)`.
+   The skip flag ends everything from step 2 on.
+
+**The chapter screen, `0x445a80` (scene 1000).** RESOURCE.000's header byte 2 (`0xa291f1`) is the
+last chapter started. If it is 0, the screen sets scene 2010 (the opening) and returns.
+
+- **Loading.** `0x4459c0` reads `RESOURCE.A03`'s seven raw 204x120 RGB565 pictures one after
+  another into `0x94f4e8`: entry 0 is the prologue, 1 to 6 the chapters. `0x4455a0` writes a
+  half-brightness copy of each after them: `(p >> 1) & mask`, where the mask is `0x7bef` in 565.
+- **Layout.** `0x445670` fills the hit mask `0xa838c8` with 0xff, then each card's rectangle with
+  its number. Cards 0 to n (n = the byte) go at the scene positions in the table at `0x5a4a64`:
+  `u16 x, u16 y` pairs, seven to a row, and row n - 1 for n chapters:
+
+  | n | card positions (x, y) |
+  | --- | --- |
+  | 1 | (410,150) (410,290) |
+  | 2 | (410,150) (298,290) (522,290) |
+  | 3 | (410,150) (186,290) (410,290) (634,290) |
+  | 4 | (410,80) (186,220) (410,220) (634,220) (410,360) |
+  | 5 | (410,80) (186,220) (410,220) (634,220) (298,360) (522,360) |
+  | 6 | (410,80) (186,220) (410,220) (634,220) (186,360) (410,360) (634,360) |
+
+- **Drawing and hover.** All cards are drawn dim (`0x445420(card, x, y, bright, present)`), and the
+  screen fades in over 0.25 s (`0x401ed0(25)`). The card under the pointer is the mask's byte at
+  `(mouseY - 84) * width + mouseX`. It is redrawn bright, and `0x445700(card)` sets the caption
+  (`0x417270`): "JUGAR RUNAWAY DESDE EL COMIENZO" (`0x5bdfb4`), "JUGAR EL CAPÍTULO n" (`0x5bdfd4`,
+  every 20 bytes), or an empty string for 0xff.
+- **Clicks.**
+  - Card 0 sets scene 2010, card 1 scene 2000, and card k `(k + 2) * 1000`. The screen is then
+    cleared to black.
+  - A click off the cards in the top band's options word (`y < 74`, `611 < x < 712`), or the skip
+    flag, opens the options menu (`0x42daf0`). The screen is redrawn if no game was loaded.
+
+**Chapter progress, `0x4440b0(ch)`.** `0x444b00` calls it whenever a chapter starts. At a scene
+that is a multiple of 1000, if `ch` is greater than `0xa291f1`, it stores `ch` there and writes the
+byte back into `RESOURCE.000` at offset 2.
 
 ### The three dispatch tables
 
@@ -905,7 +1002,7 @@ table (`0x856420`) and the size table (`0x94f420`):
 
 The engine's scene index is the background's ordinal among the archive's entries. Scene functions
 that open no archive are chapter titles and cutscenes: 1000, 2000, 2010, 4000, 4010, 5000, 5140,
-6000, 7000, 8000 and 9020. `virtual_archive()` gives each of them, except the title menu and B01's
+6000, 7000, 8000 and 9020. `virtual_archive()` gives each of them, except the chapter screen and B01's
 2010, its room's name as a placeholder (`RESOURCE.D00`, `RESOURCE.I02`, ...), so the engine can find
 them by archive. Codegen then tells the engine what that room really loads:
 
@@ -1711,8 +1808,8 @@ The inventory portrait uses the same 12-frame convention, `portrait*12 + headFra
   (12 frames) or a 12-byte table, and stores it in the variable the room's redraw passes as a sprite
   frame. It stores the viseme-0 frame at line end. For example, D07 writes `0x5d1b68 = v+24/54/105`,
   which e4 draws.
-- A shared engine path `0x439bb0`/`0x439d60` blits from sprite object `0x92d280`; its purpose is not
-  established.
+- `0x439bb0` is the video talk step: it draws `0x416de0`'s viseme as a mouth over a held video
+  still (`0x43b250`, the `.000` mouth tables; see "The held stills' mouths").
 - E10 and H10 test Brian's flag `0x9dade0` rather than the NPC's.
 
 **Who speaks** (read 2026-09-30). `say(t, row, frame)` = `0x413990` is **always Brian** (speaker 0,

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
 using PenduloStudiosExplorer.Core.FileSystem;
 using PenduloStudiosExplorer.Core.Formats;
@@ -123,6 +123,12 @@ public static class ResourceLoader
                 case EntryKind.Mask:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (DdsDecoder.IsDds(data))
+                    {
+                        if (DdsDecoder.Decode(data, colorSeed: node.EntryIndex) is { } ddsImg)
+                            return new ImageResource(ddsImg, 0, 0, true, "occluder mask");
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as DDS mask.");
+                    }
                     if (PngDecoder.IsPng(data))
                     {
                         if (PngDecoder.Decode(data) is { } pngImg)
@@ -172,6 +178,12 @@ public static class ResourceLoader
                 case EntryKind.Overlay:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (DdsDecoder.IsDds(data))
+                    {
+                        if (DdsDecoder.Decode(data, colorSeed: node.EntryIndex) is { } ddsImg)
+                            return new ImageResource(ddsImg, 0, 0, true, "overlay");
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as DDS overlay.");
+                    }
                     if (PngDecoder.IsPng(data))
                     {
                         if (PngDecoder.Decode(data) is { } pngImg)
@@ -463,6 +475,24 @@ public static class ResourceLoader
                 case EntryKind.RawFile:
                 default:
                 {
+                    if (node.ArchivePath is not null
+                        && ActorArchive.IsActorArchive(Path.GetFileName(node.ArchivePath), vfs.GameVersion)
+                        && ActorArchive.FromDataSlot(node.EntryIndex) is { } actorAnim)
+                    {
+                        byte[]? table = ActorArchive.ReadFrameTable(node.ArchivePath, actorAnim);
+                        if (table is not null)
+                        {
+                            byte[] animData = vfs.ReadBytes(node);
+                            CharacterSpriteAsset? asset = CharacterSpriteAsset.Parse(
+                                table, actorAnim.FrameCount, animData, actorAnim.Geometry);
+                            if (asset is not null)
+                            {
+                                asset.Palette = vfs.CharacterPaletteFor(node);
+                                return new AnimationResource(asset);
+                            }
+                        }
+                    }
+
                     if (node.Kind == EntryKind.Data && (node.Size == RouteDecoder.TotalSizeR1 || node.Size == RouteDecoder.TotalSizeR2))
                     {
                         byte[] routeData = vfs.ReadBytes(node);

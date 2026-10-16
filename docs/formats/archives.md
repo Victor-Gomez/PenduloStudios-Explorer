@@ -1,4 +1,4 @@
-﻿# Archive containers
+# Archive containers
 
 The game engine uses nameless offset-table archives with no extensions, file paths, or magic headers. Every archive is a flat container indexed by entry number (`e00`, `e01`, …).
 
@@ -119,8 +119,8 @@ the region data, and it names two entries that would otherwise be filed as anony
   - `48960 bytes` (`e00`–`e06` in *Runaway 1* `RESOURCE.A03`): Chapter selection thumbnail cards. 7 fixed-size $204 \times 120$ RGB565 rasters ($204 \times 120 \times 2 = 48,960$ bytes) displayed on the main menu save/chapter select screen.
   - `3909 bytes` (`e07` in *Hollywood Monsters* `RESOURCE.I04`): World map travel selection mask. Continuous 3-byte RLE mask decompressing to $1024 \times 480$ (491,520 pixels) hit-testing the 7 destinations.
   - `516096 bytes` (`e43` in *Hollywood Monsters* `RESOURCE.000`): Inventory item icons book. 126 $64 \times 64$ 8-bit indexed icon pages ($126 \times 4,096 = 516,096$ bytes), rendered with `RESOURCE.000` entry 49's 80-color palette (slots 176–255; 0 transparent).
-  - `785301 bytes` (*Yesterday* `RESOURCE.X03`): Cutscene illustrations archive. Runaway 2-style container ($32$-byte table half, $68$-byte table end) holding 8 $1920 \times 1080$ PNG slides.
   - `526654 bytes` (*The Next BIG Thing* `RESOURCE.004`): Lip-sync viseme tracks. $11,500$ `{u32 Offset, u32 Size}` slots ($92,000$-byte table) encoding mouth phoneme keyframe arrays.
+  - **DDS alpha occluder masks** ($W \times H + 128$ bytes, e.g. 2,073,728 bytes for $1920 \times 1080$ or 3,153,728 bytes for $2920 \times 1080$ in *The Next BIG Thing*): Full-resolution uncompressed 8-bit Alpha DirectDraw Surface textures (`DDPF_ALPHA`, `D3DFMT_A8`; 67 entries across 28 scene archives, such as `RESOURCE.A02` `e04`, `e06`, `e07`) storing anti-aliased depth mattes for foreground walk-behind scenery elements. See [masks.md](masks.md) §5.
 
 ##### Character sprite archives: `RESOURCE.SP1`–`RESOURCE.SP5` (*Runaway 2*)
 
